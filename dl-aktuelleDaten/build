@@ -1,0 +1,1 @@
+gcc -o dl-aktuelle-datenx dl-aktuelle-datenx.c -lncurses -lpanel

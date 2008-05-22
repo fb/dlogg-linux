@@ -1,0 +1,1 @@
+gcc -o dl-lesenx dl-lesenx.c
