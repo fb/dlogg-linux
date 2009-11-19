@@ -210,7 +210,8 @@ int main(int argc, char **argv)
   p_tmp_kopf1_uvr61_3 = tmp_kopf1_uvr61_3;
   p_tmp_kopf2_uvr61_3 = tmp_kopf2_uvr61_3;
   p_sql_kopf = sql_kopf;
-  sprintf(p_sql_kopf,"INSERT INTO %s VALUES(",tabelle);
+  // ersetzt am 19.11.2009:  sprintf(p_sql_kopf,"INSERT INTO %s VALUES(",tabelle);
+  sprintf(p_sql_kopf,"INSERT IGNORE INTO %s VALUES(",tabelle);
   p_tmp_kopf1 = "Datum;Zeit;Sens1;Sens2;Sens3;Sens4;Sens5;Sens6;Sens7;Sens8;Sens9;\
 Sens10;Sens11;Sens12;Sens13;Sens14;Sens15;Sens16;\
 Ausg1;Drehzst_A1;Ausg2;Drehzst_A2;Ausg3;Ausg4;Ausg5;Ausg6;Drehzst_A6;Ausg7;Drehzst_A7;\
