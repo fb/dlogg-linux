@@ -1,10 +1,25 @@
-/********************************************************/
-/* Konvertierung Winsol-LogDatei in CVS- oder SQL-Datei */
-/* (c) H. Roemer                                         */
-/* Version 0.2  25.10.2006                              */
-/* Version 0.3  11.01.2007                              */
-/* Version 0.4  27.01.2008                              */
-/********************************************************/
+/*****************************************************************************
+ * Konvertierung Winsol-LogDatei in CVS- oder SQL-Datei                      *
+ * (c) 2006 - 2009 H. Roemer                                                 *
+ *                                                                           *
+ * This program is free software; you can redistribute it and/or             *
+ * modify it under the terms of the GNU General Public License               *
+ * as published by the Free Software Foundation; either version 2            *
+ * of the License, or (at your option) any later version.                    *
+ *                                                                           *
+ * This program is distributed in the hope that it will be useful,           *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of            *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             *
+ * GNU General Public License for more details.                              *
+ *                                                                           *
+ * You should have received a copy of the GNU General Public License         *
+ * along with this program; if not, see <http://www.gnu.org/licenses/>.      *
+ *                                                                           *
+ * Version 0.2		25.10.2006                                               *
+ * Version 0.3		11.01.2007                                               *
+ * Version 0.4		27.01.2008                                               *
+ * Version 0.4.1	19.11.2009  INSERT IGNORE INTO                           *
+ *****************************************************************************/
 
 /* unter Windows Absturz bei Eclipse 3.2 + gcc + Build als Release
  bei Build = Debug scheint das Progamm fehlerfrei zu laufen */

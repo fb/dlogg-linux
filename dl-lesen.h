@@ -1,18 +1,32 @@
 /* Standard-Technik um Konflikte bei mehrfachem inkludieren des headers zu vermeiden */
-
 #ifndef _DL_LESEN_H
 #define _DL_LESEN_H
 
-/*****************************************************************************/
-/* Header-File fuer das Lesen der Daten aus dem Datenlogger (UVR1611)        */
-/* 19.04.2006 H. Roemer      - erste Version                                 */
-/* 27.01.2007 C. Dolainsky   - angepasst und optimiert                       */
-/* 28.01.2007 H. Roemer      - Aenderung fuer Kopfsatz (0xD1 / 0xA8)         */
-/*                           - Kopfsatz Winsol entfernt                      */
-/* 17.02.2007 C. Dolainsky   - aktualisiert                                  */
-/* 22.10.2007 H. Roemer      - UVR61-3 hinzugefuegt                          */
-/*    11.2007 H. Roemer      - Modus 2DL (0xD1) hinzugefuegt                 */
-/*****************************************************************************/
+/*****************************************************************************
+ * Header-File fuer das Lesen der Daten aus dem Datenlogger (UVR1611)        *
+ * (c) 2006 - 2009 H. Roemer / C. Dolainsky                                  *
+ *                                                                           *
+ * This program is free software; you can redistribute it and/or             *
+ * modify it under the terms of the GNU General Public License               *
+ * as published by the Free Software Foundation; either version 2            *
+ * of the License, or (at your option) any later version.                    *
+ *                                                                           *
+ * This program is distributed in the hope that it will be useful,           *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of            *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             *
+ * GNU General Public License for more details.                              *
+ *                                                                           *
+ * You should have received a copy of the GNU General Public License         *
+ * along with this program; if not, see <http://www.gnu.org/licenses/>.      *
+ *                                                                           *
+ * 19.04.2006 H. Roemer      - erste Version                                 *
+ * 27.01.2007 C. Dolainsky   - angepasst und optimiert                       *
+ * 28.01.2007 H. Roemer      - Aenderung fuer Kopfsatz (0xD1 / 0xA8)         *
+ *                           - Kopfsatz Winsol entfernt                      *
+ * 17.02.2007 C. Dolainsky   - aktualisiert                                  *
+ * 22.10.2007 H. Roemer      - UVR61-3 hinzugefuegt                          *
+ *    11.2007 H. Roemer      - Modus 2DL (0xD1) hinzugefuegt                 *
+ *****************************************************************************/
 
 #define VERSIONSABFRAGE 0x81
 #define FWABFRAGE 0x82

@@ -1,0 +1,87 @@
+dl-aktuelle-datenx
+-------------------------------------------------------------------------------
+
+Das Progamm "dl-aktuelle-datenx" liest die aktuellen Daten der UVR1611 oder der
+UVR61-3 aus dem D-LOGG USB bzw. dem BL-Net unter Linux ein. Diese werden am 
+Bildschirm dargestellt oder im csv-Format gespeichert.
+
+getestete Umgebung:
+debian Linux 3.1 Sarge mit Kernel 2.6 (Standard-Kernel).
+debian Linux 4.0 Etch mit Kernel 2.6 (Standard-Kernel).
+debian linux 5.0 Lenny mit Kernel 2.6 (Standard-Kernel).
+Kubuntu 7.04, 7.10, 8.04
+
+Kernel 2.4 mit USB-Unterstuetzung lief auch, aber ich empfehle auf jeden Fall 
+den 2.6er Kernel.
+
+Die Bibliothek ncurses muss installiert sein.
+
+Installation:
+-------------
+Die Programm-Datei >dl-aktuelle-datenx< sollte in das Verzeichnis /usr/local/bin 
+kopiert werden.
+Die Rechte (vor allem das Ausfuehr-Recht) muessen den eigenen Gegebenheiten 
+angepasst werden.
+Die Datei >dl-aktuelle-datenx.conf< muss in das Verzeichnis /etc/ kopiert 
+werden. Das Recht "Lesen" sollten fuer alle gelten, midestens jedoch fuer den 
+User, der das Programm ausfuehrt.
+
+Die Datei >dl-aktuelle-datenx.conf< liegt als Beispiel-Datei unter dem Namen
+>dl-aktuelle-datenx.conf_sample< dem Archiv bei. Eine Beschreibung der 
+Einstellung ist in dieser Datei enthalten. Es handelt sich bei dieser Datei 
+um eine reine Text-Datei. Sie kann mit jedem beliebigen Editor, 
+der Unix-konform speichert, bearbeitet werden.
+
+Aufruf des Prgramms:
+--------------------
+dl-aktuelle-datenx (-p USB-Port | -i IP:Port) [-t sek] [-h] [-v] [--csv] [--rrd]
+    -p USB-Port -> Angabe des USB-Portes,
+                   an dem der D-LOGG angeschlossen ist.
+    -i IP:Port  -> Angabe der IP-Adresse und des Ports,
+                   an dem der BL-Net angeschlossen ist.
+        -t sek  -> Angabe der Zeit in Sekunden (min. 30 max. 3600),
+                   nach denen die Daten erneut gelesen werden sollen
+                   Default: 30 Sek. (ohne Paramter -t)
+
+                   Sonderfall 0 Sekunden (-t 0): es wird nur ein Datensatz
+                   gelesen, das Programm beendet und die Daten im csv-Format
+                   am Bildschirm ausgegeben.
+
+          --csv -> im CSV-Format speichern
+          --rrd -> output eines RRD tool strings
+          -h    -> diesen Hilfetext
+          -v    -> Versionsangabe
+
+Beispiel: dl-aktuelle-datenx -p /dev/ttyUSB0 -t 45
+          Liest alle 45s die aktuellen Daten vom USB-Port 0 .
+          dl-aktuelle-datenx -i 192.168.1.1:40000 -t 60
+          Liest alle 60s die aktuellen Daten von IP 192.168.1.1 Port 40000 .
+
+Die Option --rrd liefert als Ausgabe Wert1:Wert2:Wert3... in der gleichen Reihenfolge 
+wie die Option --csv bzw. -t 0 allerdings ohne Datum und Uhrzeit und kann als Eingabe
+fuer Scripte, die eine rrdtool-basierte Datenbank fuellen (wie zum Beispiel cacti),
+genutzt werden.
+
+Hinweise zum Paramter "-t 0":
+Mit diesem Paramter können vielfältige Ergebnisse erzielt werden. Er eigenet sich
+insbesondere zum Einsatz in eigenen Scripten. Zum Beispiel koennen die Daten 
+damit in eine SQL-Datenbank eingetragen werden oder es kann z. Bsp. eine 
+graphische Ausgabe (PNG/JPG) mittels PHP-Script erzeugt werden. Hierfuer ist dem 
+Archiv als Beispiel ein PHP-Script mit einer Basisbilddatei beigefuegt. Dieses 
+PHP-Script kann einerseits per PHP-CommandLineInterface aufgerufen werden oder es 
+wird in eine Webseite (Beispielsweise Apache mit PHP-Unterstuetzung) eingebunden. 
+Eine Beispiel-html-Seite ist ebenfalls im Archiv.
+
+Wenn der Modus 2DL aktiv ist - also zwei Regler (das CAN-I/O Modul wird als 
+2. UVR1611 betrachtet) am BL-Net bzw. D-LOGG angeschlossen sind - kann mittels
+Taste 'w' die Anzeige zwischen den beiden Geraeten gewechselt werden.
+
+Die aktuellste Version kann unter http://d-logg-linux.roemix.de 
+abgerufen werden.
+
+Mein Dank gilt besonders Christoph Dolainsky fuer seine Unterstuetzung und
+Programmierung von wesentlichen Teilen. Ebenfalls vielen Dank an die Firma 
+Technische Alternative Elektronische Steuerungsgeraetegesellschaft m.b.H 
+(Oesterreich) fuer ihre Unterstuetzung.
+
+(c)2006,2007,2008 H. Roemer

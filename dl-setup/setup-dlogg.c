@@ -1,19 +1,34 @@
- /*************************************************************************/
- /* Autor: Holger Roemer
-    Speicherkriterium im UVR1611 einstellen
-    Version 0.1	-03.09.2006 erste Version
-    Version 0.2 -06.09.2006 Versionsabfrage vor eigentlichem Senden des neuen
-                            Wertes eingefuegt
-					     	Das Senden der beiden Byte zum Einstellen des neuen
-					     	Wertes duerfen nicht gleichzeitig in einem write-Befehl
-					     	geschrieben werden, sondern einzeln nacheinander, also
-					     	zuerst Kennung SETUP und anschliessend den
-					     	eigentlichen neuen Wert.
-	Version 0.3 -18.02.2007 Argumentenuebergabe angepasst an Version von Christoph,
-							Argumentenbereiche ueberarbeitet,
-							IP-Kommunikation zugefuegt
-*/
-/*************************************************************************/
+/*****************************************************************************
+ * Speicherkriterium im UVR1611 einstellen                                   *
+ * (c) 2006,2007 H. Roemer                                                   *
+ *                                                                           *
+ * This program is free software; you can redistribute it and/or             *
+ * modify it under the terms of the GNU General Public License               *
+ * as published by the Free Software Foundation; either version 2            *
+ * of the License, or (at your option) any later version.                    *
+ *                                                                           *
+ * This program is distributed in the hope that it will be useful,           *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of            *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             *
+ * GNU General Public License for more details.                              *
+ *                                                                           *
+ * You should have received a copy of the GNU General Public License         *
+ * along with this program; if not, see <http://www.gnu.org/licenses/>.      *
+ *                                                                           *
+ * Version 0.1		03.09.2006 erste Version                                 *
+ * Version 0.2		06.09.2006                                               *
+ * 						Versionsabfrage vor eigentlichem Senden des neuen    *
+ *                      Wertes eingefuegt.                                   *
+ *                      Das Senden der beiden Byte zum Einstellen des neuen  *
+ *                      Wertes duerfen nicht gleichzeitig in einem           *
+ *                      write-Befehl geschrieben werden, sondern einzeln     *
+ *                      nacheinander, also zuerst Kennung SETUP und          *
+ *                      anschliessend den eigentlichen neuen Wert.           *
+ * Version 0.3		18.02.2007                                               *
+ * 						Argumentenuebergabe angepasst an Christoph's Version *
+ * 						Argumentenbereiche ueberarbeitet,                    *
+ * 						IP-Kommunikation zugefuegt                           *
+ *****************************************************************************/
 
 #include <sys/types.h>
 #include <sys/stat.h>

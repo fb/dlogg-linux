@@ -1,0 +1,29 @@
+setup-dlogg
+-------------------------------------------------------------------------------
+
+Mit setup-dlogg kann das Speicherkriterium der UVR1611 geaendert werden.
+
+Entwickelt unter Debian GNU/Linux 3.1 ("Sarge") und Kubuntu.
+
+
+Aufruf:
+setup-dlogg (-p USB-Port | -i IP:Port) -w Wert [-h] [-v]
+    -p USB-Port -> Angabe des USB-Portes,
+                   an dem der D-LOGG angeschlossen ist.
+    -i IP:Port  -> Angabe der IP-Adresse und des Ports,
+                   an dem der BL-Net angeschlossen ist.
+          Wert  -> das Speicherkriterium, nachdem UVR1611 die Daten aufzeichnet
+                   Format: entweder xx:yy (min:sec)
+                   im Bereich von 20 sec bis max. 40 min
+                   oder x,y im Bereich von 0,5 bis 12 Grad Kelvin
+          -h    -> diesen Hilfetext
+          -v    -> Versionsangabe
+
+Beispiel: setup-dlogg -p /dev/ttyUSB0 -w 1:20
+          Setzt das Speicherkriterium im UVR1611 auf 80 Sekunden.
+Beispiel: setup-dlogg -i 192.168.1.1:40000 -w 3,0
+          Setzt das Speicherkriterium im UVR1611 auf eine Temperaturdifferenz
+          von 3 Grad Kelvin.
+
+(c) 2006-2007
+http://d-logg-linux.roemix.de

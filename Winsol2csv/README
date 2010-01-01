@@ -1,0 +1,18 @@
+winsol2csv
+---------------------------------------------------------------------
+
+Konvertierung einer Log-Datei vom Winsol-Format in das csv Format 
+oder als SQL-Import-Datei.
+
+Aufruf:
+
+winsol2csv Logdatei Ausgabedatei -csv | -sql Tabelle
+
+    -csv – speichern als CSV-Datei
+    -sql Tabelle – speichern als SQL-Import-Datei
+                   Tabelle – Tabellenname der (My)SQL-Dattenbank
+
+Beispiel:
+
+    winsol2csv Y200511.log 200511.csv -csv
+    winsol2csv Y200511.log 200511.sql -sql UVR_1611

@@ -1,0 +1,27 @@
+13.10.2008 Version 0.8.0
+           Unterstuetzung des Modus 2DL
+
+10.01.2008 Version 0.7.7.1
+           Fehler bei Momentanleistung UVR1611 im Winsol-Format beseitigt
+
+26.12.2007 Version 0.7.7
+           Unterstuetzung des Reglers UVR61-3
+
+01.04.2007 Version 0.7
+           neben USB wird fuer den BL-Net auch IP-Kommunikation unterstuetzt
+
+22.10.2006 Version 0.5d
+           Eintrag in /var/log/dl-lesenx.log bei fehlerhaftem Wert im Low-Byte Endadresse
+           erweitert
+           bei fehlerhaftem Wert im Low-Byte Endadresse bis zu 4 mal erneutes Lesen 
+           der Daten
+
+13.10.2006 Version 0.5c
+           Fehler bei fehlenden Rechten, /var/log/dl-lesenx.log zu schreiben, beseitigt
+           neue liesmich.txt beachten!
+
+11.10.2006 Version 0.5b
+           Fehler bei Lesen einer ungueltigen Startadresse beseitigt
+
+05.10.2006 Version 0.5a
+           erste Veroeffentlichung

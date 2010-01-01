@@ -1,18 +1,30 @@
-/****************************************************************************/
-/* Daten der UVR1611 lesen vom Datenlogger und im Winsol-Format speichern
-   read data of UVR1611 from Datanlogger and save it in format of Winsol
-   Holger Roemer
-
-   18.04.2006  erste Testversion
-   05.10.2006  Version 0.5a   Protokoll-Log in /var/dl-lesenx.log speichern
-   27.01.2006  Version 0.6    C. Dolainsky
-   28.01.2006                 Anpassung an geaenderte dl-lesen.h.
-   18.03.2007                 IP
-   01.04.2007  Version 0.7
-   26.12.2007  Version 0.7.7  UVR61-3
-   13.01.2008  Version 0.8    2DL-Modus
-*/
-/****************************************************************************/
+/*****************************************************************************
+ * Daten der UVR1611 lesen vom Datenlogger und im Winsol-Format speichern    *
+ * read data of UVR1611 from Datanlogger and save it in format of Winsol     *
+ * (c) 2006 - 2009 H. Roemer / C. Dolainsky                                  *
+ *                                                                           *
+ * This program is free software; you can redistribute it and/or             *
+ * modify it under the terms of the GNU General Public License               *
+ * as published by the Free Software Foundation; either version 2            *
+ * of the License, or (at your option) any later version.                    *
+ *                                                                           *
+ * This program is distributed in the hope that it will be useful,           *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of            *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             *
+ * GNU General Public License for more details.                              *
+ *                                                                           *
+ * You should have received a copy of the GNU General Public License         *
+ * along with this program; if not, see <http://www.gnu.org/licenses/>.      *
+ *                                                                           *
+ * Version 0.1		18.04.2006 erste Testversion                             *
+ * Version 0.5a		05.10.2006 Protokoll-Log in /var/dl-lesenx.log speichern *
+ * Version 0.6		27.01.2006 C. Dolainsky                                  *
+ * 					28.01.2006 Anpassung an geaenderte dl-lesen.h.           *
+ * 					18.03.2007 IP                                            *
+ * Version 0.7		01.04.2007                                               *
+ * Version 0.7.7	26.12.2007 UVR61-3                                       *
+ * Version 0.8		13.01.2008 2DL-Modus                                     *
+ *****************************************************************************/
 
 #include <sys/types.h>
 #include <sys/stat.h>

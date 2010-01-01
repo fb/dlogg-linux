@@ -1,0 +1,44 @@
+25.02.2008 Version 0.8.2
+           Option --rrd hinzugefuegt
+
+24.01.2008 Version 0.8.1
+           Fehler 'Ausgabe MWh anstatt Momentanleistung' bei -t 0 und --csv
+           beseitigt
+
+13.01.2008 Version 0.8.0
+           Erweiterung der Anzeige im 2DL-Modus um Taste 'w' zum Umschalten
+           zwischen den beiden Geraeten
+
+10.01.2008 Version 0.7.9.1
+           Fehler bei Momentanleistung (negative Werten) beseitigt
+           Fehler Anzeige Raumtemperatur Sensor 16 beseitigt
+
+05.01.2008 Version 0.7.9
+           Unterstuetzung des Reglers UVR61-3
+           Unterstuetzung des Modus "2 DatenLeitungen" mit folgender Ausnahme:
+             die Bildschirmausgabe (Konsolenansicht) ist auf den ersten Regler
+             begrenzt, die Werte des zweiten Reglers / CAN-I/O-Modul bei der
+             UVR1611 werden nicht angezeigt
+
+25.06.2007 Version 0.7.2
+           Raumtemperatursensor und digitalter Sensor werden unterstuetzt
+           neuer Parameter "-t 0" :
+           es wird ein Datensatz gelesen, die Daten werden im csv-Format am
+           Bildschirm angezeigt und das Programm beendet sich
+
+11.03.2007 Version 0.7
+           Unterstuetzung Ethernet bei BL-Net
+           Ausgabe der Daten im csv-Format
+
+22.01.2007 Version 0.6c
+           Minus-Temperaturen werden jetzt angezeigt
+
+11.01.2007 Version 0.6b
+           Fehler bei Minus-Temperaturen beseitigt
+
+26.12.2006 Version 0.6a
+           Fehler bei Volumenstromanzeige beseitigt
+           Anzeigefehler bei Status Drehzahlregelung DzA1 und DzA7 beseitigt
+
+22.10.2006 Version 0.5
+           erste Veroeffentlichung

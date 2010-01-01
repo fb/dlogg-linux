@@ -1,0 +1,9 @@
+18.02.2007 Version 0.3
+           Argumentenuebergabe angepasst an Christoph's Version
+           Argumentenbereiche ueberarbeitet, IP-Kommunikation zugefuegt   
+
+06.09.2006 Version 0.2
+           Versionsabfrage vor eigentlichem Senden des neuen Wertes
+
+03.09.2006 Version 0.1
+           erste Version

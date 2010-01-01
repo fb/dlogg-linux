@@ -1,29 +1,47 @@
-/*************************************************************************/
-/* Daten der UVR1611 lesen vom Datenlogger und im Winsol-Format speichern
-   read data of UVR1611 from Datanlogger and save it in format of Winsol
-   Holger Roemer
-
-   14.10.2006  erste Testversion
-   Version 0.1
-   26.10.2006  Version 0.6a
-   11.01.2007  Version 0.6b
-   22.01.2007  Version 0.6c
-   08.02.2007  Christoph: select um Haenger zu vermeiden, verbessertes retry (v.a. fuer USB)
-   10.02.2007  Holger: erste Version mit funkionierendem IP Lesen
-               (socket open/close bei jedem Transfer)
-   15.02.2007  Christoph: retry timer verbessert, csv-mode:
-               output minimiert, segfault bei falscher parameter eingabe behoben
-   27.02.2007  Version 0.7
-   11.03.2007  Monatswechsel fuer csv-Datei eingefuegt
-   21.06.2007  Raumtemp. und digit. Pegel eingefuegt
-   22.06.2007  Zeitoption 0 eingefuegt -> einen Datensatz lesen und Programmende
-   22.10.2007  Unterstuetzung fuer UVR61-3
-      12.2007  Unterstuetzung 2DL-Modus
-   13.01.2008  Version 0.8.0 (Wechsel der Anzeige zwischen Geraet 1 und 2 mit Taste 'w')
-   24.01.2008  Version 0.8.1 Fehlerkorrektur Momentanleistung in csv-Ausgabe
-   25.02.2008  Version 0.8.2 --rrd Unterstuetzung
-*/
-/*************************************************************************/
+/*****************************************************************************
+ * Daten der UVR1611 lesen vom Datenlogger und im Winsol-Format speichern    *
+ * read data of UVR1611 from Datanlogger and save it in format of Winsol     *
+ * (c) 2006 - 2009 H. Roemer / C. Dolainsky                                  *
+ *                                                                           *
+ * This program is free software; you can redistribute it and/or             *
+ * modify it under the terms of the GNU General Public License               *
+ * as published by the Free Software Foundation; either version 2            *
+ * of the License, or (at your option) any later version.                    *
+ *                                                                           *
+ * This program is distributed in the hope that it will be useful,           *
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of            *
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             *
+ * GNU General Public License for more details.                              *
+ *                                                                           *
+ * You should have received a copy of the GNU General Public License         *
+ * along with this program; if not, see <http://www.gnu.org/licenses/>.      *
+ *                                                                           *
+ * Version 0.1		14.10.2006  erste Testversion                            *
+ * Version 0.6a		26.10.2006                                               *
+ * Version 0.6b		11.01.2007                                               *
+ * Version 0.6c		22.01.2007                                               *
+ * 					08.02.2007  Christoph:                                   *
+ * 						select um Haenger zu vermeiden, verbessertes retry   *
+ * 						(v.a. fuer USB)                                      *
+ * 					10.02.2007  Holger:                                      *
+ * 						erste Version mit funkionierendem IP Lesen           *
+ * 						(socket open/close bei jedem Transfer)               *
+ * 					15.02.2007  Christoph:                                   *
+ * 						retry timer verbessert, csv-mode: output minimiert,  *
+ * 						segfault bei falscher parametereingabe behoben       *
+ * Version 0.7		27.02.2007                                               *
+ * 					11.03.2007  Monatswechsel fuer csv-Datei eingefuegt      *
+ * 					21.06.2007  Raumtemp. und digit. Pegel eingefuegt        *
+ * 					22.06.2007  Zeitoption 0 eingefuegt -> einen Datensatz   *
+ * 								lesen und Programmende                       *
+ * 					22.10.2007  Unterstuetzung fuer UVR61-3                  *
+ * 					   12.2007  Unterstuetzung 2DL-Modus                     *
+ * Version 0.8.0	13.01.2008  Wechsel der Anzeige zwischen Geraet 1 und 2  *
+ * 								mit Taste 'w'                                *
+ * Version 0.8.1	24.01.2008  Fehlerkorrektur Momentanleistung in	         *
+ * 								csv-Ausgabe                                  *
+ * Version 0.8.2	25.02.2008  --rrd Unterstuetzung                         *
+ *****************************************************************************/
 
 #include <sys/types.h>
 #include <sys/stat.h>
