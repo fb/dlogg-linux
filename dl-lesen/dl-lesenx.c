@@ -1,7 +1,7 @@
 /*****************************************************************************
  * Daten der UVR1611 lesen vom Datenlogger und im Winsol-Format speichern    *
  * read data of UVR1611 from Datanlogger and save it in format of Winsol     *
- * (c) 2006 - 2009 H. Roemer / C. Dolainsky                                  *
+ * (c) 2006 - 2010 H. Roemer / C. Dolainsky  / S. Lechner                    *
  *                                                                           *
  * This program is free software; you can redistribute it and/or             *
  * modify it under the terms of the GNU General Public License               *
@@ -24,6 +24,7 @@
  * Version 0.7		01.04.2007                                               *
  * Version 0.7.7	26.12.2007 UVR61-3                                       *
  * Version 0.8		13.01.2008 2DL-Modus                                     *
+ * Version 0.8.1 	04.12.2009 --dir Parameter aufgenommen                   *
  *****************************************************************************/
 
 #include <sys/types.h>
@@ -103,6 +104,7 @@ FILE *fp_csvfile=NULL ;
 char dlport[13]; /* Uebergebener Parameter USB-Port */
 char LogFileName[12], LogFileName_2[14];
 char varLogFile[22];
+char DirName[255];
 char sDatum[11], sZeit[11];
 u_DS_UVR1611_UVR61_3 structDLdatensatz;
 
@@ -124,7 +126,8 @@ int main(int argc, char *argv[])
   ip_zugriff = 0;
   usb_zugriff = 0;
   ip_first = 1;
-
+  
+  strcpy(DirName,"./");
   erg_check_arg = check_arg_getopt(argc, argv);
 
 #if  DEBUG>1
@@ -337,15 +340,16 @@ int do_cleanup(void)
 static int print_usage()
 {
 
-  fprintf(stderr,"\ndl-lesenx (-p USB-Port | -i IP:Port)  [--csv] [--res] [-h] [-v]\n");
+  fprintf(stderr,"\ndl-lesenx (-p USB-Port | -i IP:Port)  [--csv] [--res] [--dir] [-h] [-v]\n");
   fprintf(stderr,"    -p USB-Port -> Angabe des USB-Portes,\n");
   fprintf(stderr,"                   an dem der D-LOGG angeschlossen ist.\n");
   fprintf(stderr,"    -i IP:Port  -> Angabe der IP-Adresse und des Ports,\n");
   fprintf(stderr,"                   an dem der BL-Net angeschlossen ist.\n");
-  fprintf(stderr,"          --csv  -> im CSV-Format speichern (wird noch nicht unterstuetzt)\n");
+  fprintf(stderr,"          --csv -> im CSV-Format speichern (wird noch nicht unterstuetzt)\n");
   fprintf(stderr,"                   Standard: ist WINSOL-Format\n");
-  fprintf(stderr,"          --res  -> nach dem Lesen Ruecksetzen des DL\n");
+  fprintf(stderr,"          --res -> nach dem Lesen Ruecksetzen des DL\n");
   fprintf(stderr,"                   Standard: KEIN Ruecksetzen des DL nach dem Lesen\n");
+  fprintf(stderr,"          --dir -> Verzeichnis in dem die Datei angelegt werden soll\n");
   fprintf(stderr,"          -h    -> diesen Hilfetext\n");
   fprintf(stderr,"          -v    -> Versionsangabe\n");
   fprintf(stderr,"\n");
@@ -373,6 +377,7 @@ int check_arg_getopt(int arg_c, char *arg_v[])
     {
       {"csv", 0, 0, 0},
       {"res", 0, 0, 0},
+	  {"dir", 1, 0, 0},
       {0, 0, 0, 0}
     };
 
@@ -392,7 +397,7 @@ int check_arg_getopt(int arg_c, char *arg_v[])
       case 'v':
       {
         printf("\n    UVR1611/UVR61-3 Daten lesen vom D-LOGG USB / BL-Net \n");
-        printf("    Version 0.8 vom 13.01.2008 \n");
+		printf("    Version 0.8.1 vom 04.12.2009 \n");
         return 0;
       }
       case 'h':
@@ -451,6 +456,18 @@ int check_arg_getopt(int arg_c, char *arg_v[])
           reset = 1;  /* Ruecksetzen DL nach Daten lesen gewuenscht */
           printf(" mit  reset des Logger-Speichers! \n");
         }
+        if (  strncmp( long_options[option_index].name, "dir", 3) == 0 ) /* Verzeichnis */
+        {
+          if (strlen(optarg) < (sizeof(DirName)-1)) {
+            strcpy(DirName,optarg);
+            if (DirName[strlen(DirName)] != '/') {
+              strcat(DirName,"/");
+            }
+          }
+          else {
+          printf(" Verzeichnis ist zu lang\n");
+          }
+        }
         break;
       }
       default:
@@ -501,15 +518,15 @@ int erzeugeLogfileName(UCHAR ds_monat, UCHAR ds_jahr)
 
   if (csv ==  1) /* LogDatei im CSV-Format schreiben */
     {
-      erg=sprintf(pLogFileName,"2%03d%02d%s",ds_jahr,ds_monat,csv_endung);
+      erg=sprintf(pLogFileName,"%s2%03d%02d%s",DirName,ds_jahr,ds_monat,csv_endung);
       if (uvr_modus == 0xD1)
-        erg=sprintf(pLogFileName_2,"2%03d%02d_2%s",ds_jahr,ds_monat,csv_endung);
+        erg=sprintf(pLogFileName_2,"%s2%03d%02d_2%s",DirName,ds_jahr,ds_monat,csv_endung);
     }
   else  /* LogDatei im Winsol-Format schreiben */
     {
-      erg=sprintf(pLogFileName,"Y2%03d%02d%s",ds_jahr,ds_monat,winsol_endung);
+      erg=sprintf(pLogFileName,"%sY2%03d%02d%s",DirName,ds_jahr,ds_monat,winsol_endung);
       if (uvr_modus == 0xD1)
-        erg=sprintf(pLogFileName_2,"Y2%03d%02d_2%s",ds_jahr,ds_monat,winsol_endung);
+        erg=sprintf(pLogFileName_2,"%sY2%03d%02d_2%s",DirName,ds_jahr,ds_monat,winsol_endung);
     }
 
   return erg;
