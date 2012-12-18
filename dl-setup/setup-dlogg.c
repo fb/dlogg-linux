@@ -97,7 +97,8 @@ int main(int argc, char *argv[])
     	/* save current port settings */
     	tcgetattr(fd,&oldtio);
     	/* initialize the port settings structure to all zeros */
-    	bzero(&newtio, sizeof(newtio));
+    	//bzero(&newtio, sizeof(newtio));
+	memset( &newtio, 0, sizeof(newtio) );
     	/* then set the baud rate, handshaking and a few other settings */
     	newtio.c_cflag = BAUDRATE | CRTSCTS | CS8 | CLOCAL | CREAD;
     	newtio.c_iflag = IGNPAR;

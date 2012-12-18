@@ -1,29 +1,12 @@
-/*****************************************************************************
- * Konvertierung Winsol-LogDatei in CVS- oder SQL-Datei                      *
- * (c) 2006 - 2009 H. Roemer                                                 *
- *                                                                           *
- * This program is free software; you can redistribute it and/or             *
- * modify it under the terms of the GNU General Public License               *
- * as published by the Free Software Foundation; either version 2            *
- * of the License, or (at your option) any later version.                    *
- *                                                                           *
- * This program is distributed in the hope that it will be useful,           *
- * but WITHOUT ANY WARRANTY; without even the implied warranty of            *
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             *
- * GNU General Public License for more details.                              *
- *                                                                           *
- * You should have received a copy of the GNU General Public License         *
- * along with this program; if not, see <http://www.gnu.org/licenses/>.      *
- *                                                                           *
- * Version 0.2		25.10.2006                                               *
- * Version 0.3		11.01.2007                                               *
- * Version 0.4		27.01.2008                                               *
- * Version 0.4.1	19.11.2009  INSERT IGNORE INTO                           *
- *****************************************************************************/
+/********************************************************/
+/* Konvertierung Winsol-LogDatei in CVS- oder SQL-Datei */
+/* (c) H. Roemer                                         */
+/* Version 0.2  25.10.2006                              */
+/* Version 0.3  11.01.2007                              */
+/* Version 0.4  27.01.2008                              */
+/********************************************************/
 
-/* unter Windows Absturz bei Eclipse 3.2 + gcc + Build als Release
- bei Build = Debug scheint das Progamm fehlerfrei zu laufen */
-//#define WINDOWS
+//#define WINDOWS  /* unter Windows Absturz */
 #define LINUX
 
 #include <stdio.h>
@@ -32,7 +15,7 @@
 #include <ctype.h>
 #include <locale.h>
 #include <string.h>
-#include "../dl-lesen.h"
+#include "dl-lesen.h"
 
 #ifdef WINDOWS
   #include <io.h>
@@ -83,19 +66,19 @@ struct WinsolLog_CSV {
     int std;
     int min;
     int sec;
-    int ausgang1;   /* Zustand der Ausgaenge */
-    int ausgang2;   /* Zustand der Ausgaenge */
-    int ausgang3;   /* Zustand der Ausgaenge */
-    int ausgang4;   /* Zustand der Ausgaenge */
-    int ausgang5;   /* Zustand der Ausgaenge */
-    int ausgang6;   /* Zustand der Ausgaenge */
-    int ausgang7;   /* Zustand der Ausgaenge */
-    int ausgang8;   /* Zustand der Ausgaenge */
-    int ausgang9;   /* Zustand der Ausgaenge */
-    int ausgang10;  /* Zustand der Ausgaenge */
-    int ausgang11;  /* Zustand der Ausgaenge */
-    int ausgang12;  /* Zustand der Ausgaenge */
-    int ausgang13;  /* Zustand der Ausgaenge */
+    int ausgang1;   /* Zustand der Ausg�nge */
+    int ausgang2;   /* Zustand der Ausg�nge */
+    int ausgang3;   /* Zustand der Ausg�nge */
+    int ausgang4;   /* Zustand der Ausg�nge */
+    int ausgang5;   /* Zustand der Ausg�nge */
+    int ausgang6;   /* Zustand der Ausg�nge */
+    int ausgang7;   /* Zustand der Ausg�nge */
+    int ausgang8;   /* Zustand der Ausg�nge */
+    int ausgang9;   /* Zustand der Ausg�nge */
+    int ausgang10;  /* Zustand der Ausg�nge */
+    int ausgang11;  /* Zustand der Ausg�nge */
+    int ausgang12;  /* Zustand der Ausg�nge */
+    int ausgang13;  /* Zustand der Ausg�nge */
     int dza1_aktiv; /* Drehzahlregelung aktiv*/
     int dza1_stufe; /* Drehzahlstufe */
     int dza2_aktiv; /* Drehzahlregelung aktiv*/
@@ -105,8 +88,8 @@ struct WinsolLog_CSV {
     int dza7_aktiv; /* Drehzahlregelung aktiv*/
     int dza7_stufe; /* Drehzahlstufe */
     float tempt[17]; /* tempt[0] wird nicht benutzt*/
-    int wmz1;       /* Waermemengenzaehler aktiv */
-    int wmz2;       /* Waermemengenzaehler aktiv */
+    int wmz1;       /* W�rmemengenz�hler aktiv */
+    int wmz2;       /* W�rmemengenz�hler aktiv */
     float leistung1;
     float kwh1;
     float mwh1;
@@ -122,14 +105,14 @@ struct csv_UVR61_3 {
     int std;
     int min;
     int sec;
-    int ausgang1;   /* Zustand der Ausgaenge */
+    int ausgang1;   /* Zustand der Ausg�nge */
     int dza1_aktiv; /* Drehzahlregelung aktiv*/
     int dza1_stufe; /* Drehzahlstufe */
-    int ausgang2;   /* Zustand der Ausgaenge */
-    int ausgang3;   /* Zustand der Ausgaenge */
+    int ausgang2;   /* Zustand der Ausg�nge */
+    int ausgang3;   /* Zustand der Ausg�nge */
     float analog;     /* Analogausgang */
     float tempt[7]; /* tempt[0] wird nicht benutzt*/
-    int wmz1;       /* Waermemengenzaehler aktiv */
+    int wmz1;       /* W�rmemengenz�hler aktiv */
     float volstrom;
     float leistung1;
     float kwh1;
@@ -225,8 +208,7 @@ int main(int argc, char **argv)
   p_tmp_kopf1_uvr61_3 = tmp_kopf1_uvr61_3;
   p_tmp_kopf2_uvr61_3 = tmp_kopf2_uvr61_3;
   p_sql_kopf = sql_kopf;
-  // ersetzt am 19.11.2009:  sprintf(p_sql_kopf,"INSERT INTO %s VALUES(",tabelle);
-  sprintf(p_sql_kopf,"INSERT IGNORE INTO %s VALUES(",tabelle);
+  sprintf(p_sql_kopf,"INSERT INTO %s VALUES(",tabelle);
   p_tmp_kopf1 = "Datum;Zeit;Sens1;Sens2;Sens3;Sens4;Sens5;Sens6;Sens7;Sens8;Sens9;\
 Sens10;Sens11;Sens12;Sens13;Sens14;Sens15;Sens16;\
 Ausg1;Drehzst_A1;Ausg2;Drehzst_A2;Ausg3;Ausg4;Ausg5;Ausg6;Drehzst_A6;Ausg7;Drehzst_A7;\
@@ -262,7 +244,7 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
     struct_winsol.sec = buffer[3];
     struct_csv_UVR61_3.sec = buffer[3];
 
-    /* Zustaende der Ausgangsbyte's */
+    /* Zust�nde der Ausgangsbyte's */
     ausgangsbyte1_belegen(buffer[4],uvr_typ);
     drehzahlstufen(buffer,uvr_typ);
 
@@ -306,6 +288,7 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
       for (y=1;y<7;y++)      /* Temperatur wird ermittelt und abgelegt */
       {
         S_Art[y] = eingangsparameter(buffer[x+1]);
+//      printf("S_Art[%x] = %x \n",y,S_Art[y]);
         switch(S_Art[y])
         {
           case 0: struct_csv_UVR61_3.tempt[y] = 0; break;
@@ -353,6 +336,7 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
 %i; %i; %i; \
 %i; %i; %i; \
 %.1f; %.1f; %.1f; %.1f;\n",
+// %.1f; %.f%.1f; %.1f; %.f%.1f;\n",
         struct_winsol.tag,struct_winsol.monat,struct_winsol.jahr,struct_winsol.std,struct_winsol.min,struct_winsol.sec,
         struct_winsol.tempt[1],struct_winsol.tempt[2],struct_winsol.tempt[3],struct_winsol.tempt[4],
         struct_winsol.tempt[5],struct_winsol.tempt[6],struct_winsol.tempt[7],struct_winsol.tempt[8],
@@ -363,7 +347,9 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
         struct_winsol.ausgang6,struct_winsol.dza6_stufe,struct_winsol.ausgang7,struct_winsol.dza7_stufe,
         struct_winsol.ausgang8,struct_winsol.ausgang9,struct_winsol.ausgang10,
         struct_winsol.ausgang11,struct_winsol.ausgang12,struct_winsol.ausgang13,
+//        struct_winsol.leistung1,struct_winsol.mwh1,struct_winsol.kwh1,
         struct_winsol.leistung1,(struct_winsol.mwh1*1000 + struct_winsol.kwh1),
+//        struct_winsol.leistung2,struct_winsol.mwh2,struct_winsol.kwh2);
         struct_winsol.leistung2,(struct_winsol.mwh2*1000 + struct_winsol.kwh2));
 
       if (uvr_typ == UVR61_3)
@@ -371,11 +357,13 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
 %.1f; %.1f; %.1f; %.1f; %.1f; %.1f; \
 %i; %.1i; %i; %i; %.1f; \
 %.1f; %.1f; %.1f;\n",
+//%.1f; %.1f; %.f%.1f;\n",
         struct_csv_UVR61_3.tag,struct_csv_UVR61_3.monat,struct_csv_UVR61_3.jahr,struct_csv_UVR61_3.std,struct_csv_UVR61_3.min,struct_csv_UVR61_3.sec,
         struct_csv_UVR61_3.tempt[1],struct_csv_UVR61_3.tempt[2],struct_csv_UVR61_3.tempt[3],
         struct_csv_UVR61_3.tempt[4],struct_csv_UVR61_3.tempt[5],struct_csv_UVR61_3.tempt[6],
         struct_csv_UVR61_3.ausgang1,struct_csv_UVR61_3.dza1_stufe,
         struct_csv_UVR61_3.ausgang2,struct_csv_UVR61_3.ausgang3,struct_csv_UVR61_3.analog,
+//        struct_csv_UVR61_3.volstrom,struct_csv_UVR61_3.leistung1,struct_csv_UVR61_3.mwh1,struct_csv_UVR61_3.kwh1);
         struct_csv_UVR61_3.volstrom,struct_csv_UVR61_3.leistung1,(struct_csv_UVR61_3.mwh1*1000 +struct_csv_UVR61_3.kwh1));
     }
 
@@ -386,6 +374,7 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
 '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', \
 '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', '%i', \
 '%i', '%i', '%.1f', '%.1f', '%.1f', '%.1f');\n",
+//'%i', '%i', '%.1f', '%.f%.1f', '%.1f', '%.f%.1f');\n",
         p_sql_kopf,struct_winsol.jahr,struct_winsol.monat,struct_winsol.tag,struct_winsol.std,struct_winsol.min,struct_winsol.sec, // Datum und Uhrzeit
         struct_winsol.tempt[1],struct_winsol.tempt[2],struct_winsol.tempt[3],struct_winsol.tempt[4],struct_winsol.tempt[5],
         struct_winsol.tempt[6],struct_winsol.tempt[7],struct_winsol.tempt[8],struct_winsol.tempt[9],struct_winsol.tempt[10],
@@ -396,7 +385,9 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
         struct_winsol.ausgang8,struct_winsol.ausgang9,struct_winsol.ausgang10,
         struct_winsol.ausgang11,struct_winsol.ausgang12,struct_winsol.ausgang13,
         struct_winsol.wmz1,struct_winsol.wmz2,
+//        struct_winsol.leistung1,struct_winsol.mwh1,struct_winsol.kwh1,
         struct_winsol.leistung1,(struct_winsol.mwh1*1000 + struct_winsol.kwh1),
+//        struct_winsol.leistung2,struct_winsol.mwh2,struct_winsol.kwh2);
         struct_winsol.leistung2,(struct_winsol.mwh2*1000 + struct_winsol.kwh2));
 
       if (uvr_typ == UVR61_3)
@@ -404,18 +395,24 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
 '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', '%.1f', \
 '%i', '%.1i', '%i', '%i', '%.1f', \
 '%i', '%.1f', '%.1f', '%.1f');\n",
+//'%i', '%.1f', '%.1f', '%.f%.1f');\n",
         p_sql_kopf,struct_csv_UVR61_3.jahr,struct_csv_UVR61_3.monat,struct_csv_UVR61_3.tag,struct_csv_UVR61_3.std,struct_csv_UVR61_3.min,struct_csv_UVR61_3.sec,
         struct_csv_UVR61_3.tempt[1],struct_csv_UVR61_3.tempt[2],struct_csv_UVR61_3.tempt[3],
         struct_csv_UVR61_3.tempt[4],struct_csv_UVR61_3.tempt[5],struct_csv_UVR61_3.tempt[6],
         struct_csv_UVR61_3.ausgang1,struct_csv_UVR61_3.dza1_stufe,
         struct_csv_UVR61_3.ausgang2,struct_csv_UVR61_3.ausgang3,struct_csv_UVR61_3.analog,
         struct_csv_UVR61_3.wmz1,struct_csv_UVR61_3.volstrom,
+//        struct_csv_UVR61_3.leistung1,struct_csv_UVR61_3.mwh1,struct_csv_UVR61_3.kwh1);
         struct_csv_UVR61_3.leistung1,(struct_csv_UVR61_3.mwh1*1000 +struct_csv_UVR61_3.kwh1));
     }
 
         tmp_i++;
       i++;
+//  printf("Es wurden %i Datensaetze geschrieben.\n",i);
     }
+
+//      if (tmp_i == 5)
+//      break;
 
   printf("Es wurden %i Datensaetze geschrieben.\n",i);
 
@@ -701,18 +698,38 @@ void drehzahlstufen(UCHAR buffer[], int uvr_typ)
 /* Bearbeitung Waermemengen-Register und -Zaehler */
 void waermemengen(UCHAR buffer[], int uvr_typ)
 {
-  BYTES_LONG temp;
+  //BYTES_LONG temp;
+  int tmp_wert;
 
   if (uvr_typ == UVR1611)
   {
     if (struct_winsol.wmz1 == 1)
     {
-      temp.bytes.highhighbyte=buffer[46];
-      temp.bytes.highlowbyte=buffer[45];
-      temp.bytes.lowhighbyte=buffer[44];
-      temp.bytes.lowlowbyte=buffer[43];
-      struct_winsol.leistung1 = temp.long_word;
-      struct_winsol.leistung1 = struct_winsol.leistung1/100;
+      // temp.bytes.highhighbyte=buffer[46];
+      // temp.bytes.highlowbyte=buffer[45];
+      // temp.bytes.lowhighbyte=buffer[44];
+      // temp.bytes.lowlowbyte=buffer[43];
+// //      struct_winsol.leistung1 = (16777216*(float)buffer[46]+65536*(float)buffer[45]+256*(float)buffer[44]+(float)buffer[43])/100;
+      // struct_winsol.leistung1 = temp.long_word;
+      // struct_winsol.leistung1 = struct_winsol.leistung1/100;
+
+      if ( buffer[46] > 0x7f ) /* negtive Wete */
+      {
+        tmp_wert = (10*((65536*(float)buffer[46]+256*(float)buffer[45]+(float)buffer[44])-65536)-((float)buffer[43]*10)/256);
+        tmp_wert = tmp_wert | 0xffff0000;
+        struct_winsol.leistung1 = tmp_wert / 100;
+      }
+      else
+        struct_winsol.leistung1 = (10*(65536*(float)buffer[46]+256*(float)buffer[45]+(float)buffer[44])+((float)buffer[43]*10)/256)/100;
+/*	  
+      if (temp.long_word != 0)
+      {
+        printf("Momentanleistung hex: %2x%2x%2x%2x\n",buffer[43],buffer[44],buffer[45],buffer[46]);
+        printf("Momentanleistung: %.2f\n",struct_winsol.leistung1);
+		printf("Momentanleistung: %.2f\n",(10*(65536*(float)buffer[46]+256*(float)buffer[45]+(float)buffer[44])+((float)buffer[43]*10)/256)/100);
+        printf("Momentanleistung: %.2f\n",(16777216*(float)buffer[46]+65536*(float)buffer[45]+256*(float)buffer[44]+(float)buffer[43])/100);
+      }
+*/
       struct_winsol.kwh1 = ( (float)buffer[48]*256 + (float)buffer[47] )/10;
       struct_winsol.mwh1 = ((float)buffer[50]*0x100 + (float)buffer[49]);
     }
@@ -725,12 +742,22 @@ void waermemengen(UCHAR buffer[], int uvr_typ)
 
     if (struct_winsol.wmz2 == 1)
     {
-      temp.bytes.highhighbyte=buffer[54];
-      temp.bytes.highlowbyte=buffer[53];
-      temp.bytes.lowhighbyte=buffer[52];
-      temp.bytes.lowlowbyte=buffer[51];
-      struct_winsol.leistung2 = temp.long_word;
-      struct_winsol.leistung2 = struct_winsol.leistung2/100;
+      // temp.bytes.highhighbyte=buffer[54];
+      // temp.bytes.highlowbyte=buffer[53];
+      // temp.bytes.lowhighbyte=buffer[52];
+      // temp.bytes.lowlowbyte=buffer[51];
+// //      struct_winsol.leistung2 = (10*(65536*(float)buffer[54]+256*(float)buffer[53]+(float)buffer[52])+((float)buffer[51]*10)/256)/100;
+      // struct_winsol.leistung2 = temp.long_word;
+      // struct_winsol.leistung2 = struct_winsol.leistung2/100;
+
+      if ( buffer[54] > 0x7f ) /* negtive Wete */
+      {
+        tmp_wert = (10*((65536*(float)buffer[54]+256*(float)buffer[53]+(float)buffer[52])-65536)-((float)buffer[51]*10)/256);
+        tmp_wert = tmp_wert | 0xffff0000;
+        struct_winsol.leistung2 = tmp_wert / 100;
+      }
+      else
+        struct_winsol.leistung2 = (10*(65536*(float)buffer[54]+256*(float)buffer[53]+(float)buffer[52])+((float)buffer[51]*10)/256)/100;
 
       struct_winsol.kwh2 = ((float)buffer[56]*256 + (float)buffer[55])/10;
       struct_winsol.mwh2 = ((float)buffer[58]*0x100 + (float)buffer[57]);

@@ -1,3 +1,6 @@
+08.08.2010 Version 0.4.2
+           Angabe einer Datenbank (optional)
+		   
 19.11.2009 Version 0.4.1
            "INSERT INTO" durch "INSERT IGNORE INTO" ersetzt
 

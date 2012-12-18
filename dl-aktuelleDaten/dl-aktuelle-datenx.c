@@ -41,6 +41,9 @@
  * Version 0.8.1	24.01.2008  Fehlerkorrektur Momentanleistung in	         *
  * 								csv-Ausgabe                                  *
  * Version 0.8.2	25.02.2008  --rrd Unterstuetzung                         *
+ * Version 0        xx.xx.2010  CAN-Logging                                  *
+ * Version 0.9.3    26.11.2012                                               *
+ *                  $Id: dl-aktuelle-datenx.c 108 2012-11-26 15:14:03Z roemix $ *
  *****************************************************************************/
 
 #include <sys/types.h>
@@ -71,11 +74,12 @@
 #define UVR61_3 0x90
 #define UVR1611 0x80
 
-//#define DEBUG 1
+// #define DEBUG 4
 
 extern char *optarg;
 extern int optind, opterr, optopt;
 
+int start_socket(WINDOW *fenster1, WINDOW *fenster2);
 int check_arg_getopt(int arg_c, char *arg_v[]);
 int check_pruefsumme(void);
 void print_pruefsumme_not_ok(UCHAR pruefz_berech, UCHAR pruefz_read);
@@ -90,6 +94,7 @@ int write_header2CSV(int regler, FILE *fp);
 void write_CSVFile(int regler, FILE *fp, time_t datapoint_time);
 void write_CSVCONSOLE(int regler, time_t datapoint_time);
 void write_rrd(int regler);
+void write_list(int regler);
 void berechne_werte(int anz_regler);
 void temperaturanz(int regler);
 void ausgaengeanz(int regler);
@@ -110,8 +115,9 @@ void keine_neuen_daten(WINDOW *fenster);
 void set_attribut(int zaehler, WINDOW *fenster);
 void test_farbe(void);
 int lies_conf(void);
+int get_modulmodus(void);
 
-FILE *fp_logfile, *fp_varlogfile, *fp_csvfile, *fp_csvfile_2;
+FILE *fp_logfile=NULL, *fp_varlogfile=NULL, *fp_csvfile=NULL, *fp_csvfile_2=NULL;
 struct termios oldtio; /* will be used to save old port settings */
 int fd;
 int write_erg, bool_farbe; /* filediskriptor, anz_datensaetze, Farbe moeglich */
@@ -142,31 +148,33 @@ struct tm *merk_zeit;
 time_t dauer;  /* -t */
 int csv_output;
 int rrd_output;
+int list_output;
 int ip_zugriff;
 int usb_zugriff;
 int sock;
 int c;
 int merk_monat;
 UCHAR uvr_modus, uvr_typ=0, uvr_typ2=0;  /* uvr_typ2 -> 2. Geraet bei 2DL */
-
+UCHAR datenrahmen;
 
 int main(int argc, char *argv[])
 {
   fp_logfile=NULL; fp_varlogfile=NULL; fp_csvfile=NULL; fp_csvfile_2=NULL;
-  csv_output=0;rrd_output=0;
+  csv_output=0;rrd_output=0;list_output=0;
   struct termios newtio;  /* will be used for new port settings */
 
+  UCHAR uvr_modus_tmp, sendbuf[1], sendbuf_can[2];    /*  sendebuffer fuer die Request-Commandos*/
   unsigned char empfbuf[256];
-  int send_bytes = 0, sendbuf[1];       /*  sendebuffer fuer die Request-Commandos*/
-  int erg_check_arg ,result, ip_first;
-  int pruefz_ok = 0, t_count;
-  int i, j=2;
+  int send_bytes = 0, erg_check_arg ,result, ip_first;
+  int pruefz_ok = 0, t_count, anzahl_can_rahmen = 0;
+  int i, j=2, sr=0;
 
   WINDOW *fenster1=NULL, *fenster2=NULL;
   PANEL  *panel1=NULL, *panel2=NULL;
 
   time_t beginn, jetzt, diff_zeit;
 
+  datenrahmen=0x01;
   result=0;
   dauer=-1; /* Vorbelegung Anzahl sek zum erneuten Lesen der Daten */
   ip_zugriff = 0;
@@ -180,16 +188,16 @@ int main(int argc, char *argv[])
   if(dauer==-1)
     {
       dauer = 30;
-      if (!rrd_output)
+      if ( (!rrd_output) && (!list_output) )
         fprintf(stderr," kein update-Zeitintervall angegeben - auf %d gesetzt\n",(int)dauer);
     }
 
   /*************************************************************************/
   /* aktiviert die locale Umgebung Komma oder Punkt als Dezimaltrenner :   */
-  if (!rrd_output)
+  if ( (!rrd_output) && (!list_output) )
     setlocale(LC_ALL, "");
 
-  if ( (dauer != 0) && (!rrd_output) )
+  if ( (dauer != 0) && (!rrd_output) && (!list_output))
   {
     if ( lies_conf() == 1)
       ext_bezeichnung = TRUE;
@@ -205,7 +213,7 @@ int main(int argc, char *argv[])
     bool_farbe=FALSE;
   }
 
-  if ((!csv_output) && (dauer != 0) && (!rrd_output))
+  if ((!csv_output) && (dauer != 0) && (!rrd_output)  && (!list_output))
   {
     initscr();                                /* initialisieren von ncurses */
     if (bool_farbe)
@@ -233,28 +241,35 @@ int main(int argc, char *argv[])
   /* IP-Zugriff  - IP-Adresse und Port sind manuell gesetzt!!! */
   if (ip_zugriff && !usb_zugriff)
   {
-    /* PF_INET instead of AF_INET - because of Protocol-family instead of address family !? */
-    sock = socket(PF_INET, SOCK_STREAM, 0);
-    if (sock == -1)
-    {
-      perror("socket failed()");
-      do_cleanup(fenster1, fenster2);
-      return 2;
-    }
-    if (connect(sock, (const struct sockaddr *)&SERVER_sockaddr_in, sizeof(SERVER_sockaddr_in)) == -1)
-    {
-      perror("connect failed()");
-      do_cleanup(fenster1, fenster2);
-      return 3;
-    }
-    if (ip_handling(sock) == -1)
-    {
-      fprintf(stderr, "%s: Fehler im Initialisieren der IP-Kommunikation\n", argv[0]);
-      do_cleanup(fenster1, fenster2);
-      return 4;
-    }
-      //  close(sock); /* IP-Socket schliessen */
+	sr = start_socket(fenster1, fenster2);
+	if (sr > 1)
+	{
+		return sr;
+	}
   } /* Ende IP-Zugriff */
+  // {
+    // /* PF_INET instead of AF_INET - because of Protocol-family instead of address family !? */
+    // sock = socket(PF_INET, SOCK_STREAM, 0);
+    // if (sock == -1)
+    // {
+      // perror("socket failed()");
+      // do_cleanup(fenster1, fenster2);
+      // return 2;
+    // }
+    // if (connect(sock, (const struct sockaddr *)&SERVER_sockaddr_in, sizeof(SERVER_sockaddr_in)) == -1)
+    // {
+      // perror("connect failed()");
+      // do_cleanup(fenster1, fenster2);
+      // return 3;
+    // }
+    // if (ip_handling(sock) == -1)
+    // {
+      // fprintf(stderr, "%s: Fehler im Initialisieren der IP-Kommunikation\n", argv[0]);
+      // do_cleanup(fenster1, fenster2);
+      // return 4;
+    // }
+      // //  close(sock); /* IP-Socket schliessen */
+  // } /* Ende IP-Zugriff */
   else  if (usb_zugriff && !ip_zugriff)
   {
     /************************************************************************/
@@ -269,7 +284,8 @@ int main(int argc, char *argv[])
     /* save current port settings */
     tcgetattr(fd,&oldtio);
     /* initialize the port settings structure to all zeros */
-    bzero(&newtio, sizeof(newtio));
+    //bzero(&newtio, sizeof(newtio));
+    memset( &newtio, 0, sizeof(newtio) );
     /* then set the baud rate, handshaking and a few other settings */
     newtio.c_cflag = BAUDRATE | CRTSCTS | CS8 | CLOCAL | CREAD;
     newtio.c_iflag = IGNPAR;
@@ -296,6 +312,21 @@ int main(int argc, char *argv[])
     do_cleanup(fenster1, fenster2);
   }
 
+  uvr_modus = get_modulmodus(); /* Welcher Modus 
+                                0xA8 (1DL) / 0xD1 (2DL) / 0xDC (CAN) */
+fprintf(stderr, " CAN-Logging: uvr_modus -> %2X \n", uvr_modus);								
+
+  if ( uvr_modus == 0xDC )
+  {
+	sendbuf[0]=KONFIGCAN;
+    write_erg=send(sock,sendbuf,1,0);
+    if (write_erg == 1)    /* Lesen der Antwort */
+      result  = recv(sock,empfbuf,18,0);
+
+	anzahl_can_rahmen = empfbuf[0];	
+fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);	
+  }
+  
   /********************************************************************/
   /* aktuelle Daten lesen                                             */
   /********************************************************************/
@@ -305,9 +336,12 @@ int main(int argc, char *argv[])
   do
   {
     kennung_ok = 1;
+    sendbuf_can[0]=AKTUELLEDATENLESEN;
+	sendbuf_can[1]=datenrahmen;      /* 1. Datenrahmen vorbelegt */
     sendbuf[0]=AKTUELLEDATENLESEN;   /* Senden Request aktuelle Daten */
-//    bzero(akt_daten,58); /* auf 116 Byte für 2DL erweitert */
-    bzero(akt_daten,116);
+//    bzero(akt_daten,58); /* auf 116 Byte fuer 2DL erweitert */
+    //bzero(akt_daten,116);
+    memset( akt_daten, 0, 116 );
     /* select um rauszufinden ob ready to read !  siehe man select */
     fd_set rfds;
     struct timeval tv;
@@ -319,6 +353,11 @@ int main(int argc, char *argv[])
 
     if (usb_zugriff)
     {
+		if ( uvr_modus == 0xDC )
+		{
+			fprintf(stderr,"USB-Abfrage bei CAN-Logging nicht implementiert!\n"); 
+			return(1);
+		}
       retry_interval=5;
       write_erg=write(fd,sendbuf,1);
       if (write_erg == 1)    /* Lesen der Antwort*/
@@ -389,6 +428,7 @@ int main(int argc, char *argv[])
     {
       if (!ip_first)
       {
+	  fprintf(stderr, " CAN-Logging: IP initialisieren.\n");
         sock = socket(PF_INET, SOCK_STREAM, 0);
         if (sock == -1)
         {
@@ -402,52 +442,117 @@ int main(int argc, char *argv[])
           do_cleanup(fenster1, fenster2);
           return 3;
         }
+		if (ip_handling(sock) == -1)
+		{
+			fprintf(stderr, "%s: Fehler im Initialisieren der IP-Kommunikation\n", argv[0]);
+			do_cleanup(fenster1, fenster2);
+			return 4;
+		}
       }
       do
       {
         do
         {
-          send_bytes=send(sock,sendbuf,1,0);
-          if (send_bytes == 1)    /* Lesen der Antwort */
+		  uvr_modus = get_modulmodus();
+		  if ( uvr_modus == 0xDC )
+		  {
+			sendbuf[0]=KONFIGCAN;
+			write_erg=send(sock,sendbuf,1,0);
+			if (write_erg == 1)    /* Lesen der Antwort */
+				result  = recv(sock,empfbuf,18,0);
+			uvr_modus_tmp = get_modulmodus();
+			if ( anzahl_can_rahmen < datenrahmen )
+			{
+				fprintf(stderr,"Falsche Parameterangabe: -r %d , setze auf 1. Datenrahmen!\n",datenrahmen);
+				datenrahmen = 1;
+				sendbuf_can[1] = datenrahmen;
+			}
+			send_bytes=send(sock,sendbuf_can,2,0);
+		  }
+		  else
+			send_bytes=send(sock,sendbuf,1,0);
+		  
+          if ( (send_bytes == 1 && uvr_modus != 0xDC) || (send_bytes == 2 && uvr_modus == 0xDC) )    /* Lesen der Antwort */
           {
-            do
-            {
-              /* muss jedesmal gesetzt werden! */
-              FD_ZERO(&rfds);
-              FD_SET(sock, &rfds);
-              /* Wait up to five seconds. */
-              tv.tv_sec = retry_interval;
-              tv.tv_usec = 0;
-              retval = select(sock+1, &rfds, NULL, NULL, &tv);
-              /* Don't rely on the value of tv now -  will contain remaining time or so */
-              zeitstempel();
+			  if ( uvr_modus == 0xDC )
+			  {
+			    i = 1;
+				do
+				{
+					result  = recv(sock,akt_daten,115,0);
+					fprintf(stderr, " CAN-Logging: Response Kennung -> %02X  Wartezeit -> %02d Sec  Byte3: %02X \n", akt_daten[0], akt_daten[1], akt_daten[2]);
+					if ( akt_daten[0] == 0xBA )
+					{
+						if ( akt_daten[2] == (akt_daten[0] + akt_daten[1]) % 0x100 )
+						{
+						//	fprintf(stderr, " CAN-Logging: %d. Schlafenszeit fuer %d Sekunden\n",i , akt_daten[1]);
+							sleep(akt_daten[1]);
+							if ( shutdown(sock,SHUT_RDWR) == -1 ) /* IP-Socket schliessen */
+							{
+								zeitstempel();
+								fprintf(stderr, "\n %s Fehler beim Schliessen der IP-Verbindung!\n", sZeit);
+							}
+							sr = start_socket(fenster1, fenster2);
+							if (sr > 1)
+							{
+								return sr;
+							}
+							i++;
+							sleep(akt_daten[1]);
+							uvr_modus_tmp = get_modulmodus();
+							if ( uvr_modus_tmp == 0xDC )
+								send_bytes=send(sock,sendbuf_can,2,0);
+						}
+					}
+					if ( i > 3 )
+					{
+						fprintf(stderr, " CAN-Logging: keine Daten empfangen.\n");
+						return -1;
+					}
+				}
+				while( akt_daten[0] == 0xBA && i < 4 );
+			  }
+			  else
+			  {
+				do
+				{
+					/* muss jedesmal gesetzt werden! */
+					FD_ZERO(&rfds);
+					FD_SET(sock, &rfds);
+					/* Wait up to five seconds. */
+					tv.tv_sec = retry_interval;
+					tv.tv_usec = 0;
+					retval = select(sock+1, &rfds, NULL, NULL, &tv);
+					/* Don't rely on the value of tv now -  will contain remaining time or so */
+					zeitstempel();
 
-              if (retval == -1)
-                perror("select(sock)");
-              else if (retval)
-              {
+					if (retval == -1)
+						perror("select(sock)");
+					else if (retval)
+						{
 #ifdef DEBUG
-                fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+						fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
 #endif
-                //result  = recv(sock,akt_daten,57,0);
-                result  = recv(sock,akt_daten,115,0);
+						result  = recv(sock,akt_daten,115,0);
+
 #ifdef DEBUG
-                fprintf(stderr,"r%d s%d received bytes=%d \n",retry,send_retry,result);
-                if (result == 1)
-                  fprintf(stderr," buffer: %X\n",akt_daten[0]);
+						fprintf(stderr,"r%d s%d received bytes=%d \n",retry,send_retry,result);
+						if (result == 1)
+							fprintf(stderr," buffer: %X\n",akt_daten[0]);
 #endif
                 /* FD_ISSET(socket, &rfds) will be true. */
-              }
-              else
-              {
+						}
+					else
+					{
 #ifdef DEBUG
-                printf("%s - No data within %d seconds.r%d s%d\n",sZeit,retry_interval,retry,send_retry);
+						fprintf(stderr,"%s - No data within %d seconds.r%d s%d\n",sZeit,retry_interval,retry,send_retry);
 #endif
-                sleep(retry_interval);
-              }
-              retry++;
-            }
-            while( retry < 3 && result < 28);
+						sleep(retry_interval);
+					}
+				retry++;
+				}
+				while( retry < 3 && result < 28);
+			  }
 
             retry=0;
           }
@@ -563,7 +668,7 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
         if (akt_daten[0] == UVR61_3)
         {
-          printf("\nRohdaten der UVR61-3:\n");
+          fprintf(stderr,"\nRohdaten der UVR61-3:\n");
           for (i=0;i<27;i++)
             printf("%2x; ", akt_daten[i]);
         }
@@ -588,6 +693,17 @@ int main(int argc, char *argv[])
           {
             berechne_werte(2);
             write_rrd(2);
+          }
+          dauer = 0;
+          c = 'q';
+        }
+        if (list_output)
+        {
+          write_list(1);
+          if (uvr_modus == 0xD1)  /* zwei Regler vorhanden */
+          {
+            berechne_werte(2);
+            write_list(2);
           }
           dauer = 0;
           c = 'q';
@@ -638,6 +754,8 @@ int main(int argc, char *argv[])
       }
       for (i=0;i<115;i++) /* alles wieder auf 0 setzen */
         akt_daten[i]=0x0;
+	  if (dauer == 0)
+	    break;
     } /* else if (akt_daten[0] == UVR1611 || akt_daten[0] == UVR61_3) */
     else
     { /* some other problem - retry immediately */
@@ -650,11 +768,11 @@ int main(int argc, char *argv[])
         halfdelay(10);
         c=getch();
       }
-      if (dauer > 0)
+      if (dauer >= 0)
       {
         jetzt=time(0);
         diff_zeit=difftime(jetzt, beginn);
-        if (dauer > 0)
+        if (dauer >= 0)
         {
           zeitstempel();
           if ((!csv_output) && (dauer != 0))
@@ -734,6 +852,34 @@ int main(int argc, char *argv[])
   return(0);
 } /* Ende main() */
 
+/* socket erzeugen und Verbindung aufbauen */
+int start_socket(WINDOW *fenster1, WINDOW *fenster2)
+{
+    sock = socket(PF_INET, SOCK_STREAM, 0);
+    if (sock == -1)
+    {
+      perror("socket failed()");
+      do_cleanup(fenster1, fenster2);
+      return 2;
+    }
+
+    if (connect(sock, (const struct sockaddr *)&SERVER_sockaddr_in, sizeof(SERVER_sockaddr_in)) == -1)
+    {
+      perror("connect failed()");
+      do_cleanup(fenster1, fenster2);
+      return 3;
+    }
+
+    if (ip_handling(sock) == -1)
+    {
+      fprintf(stderr, "Fehler im Initialisieren der IP-Kommunikation!\n");
+      do_cleanup(fenster1, fenster2);
+      return 4;
+    }
+	
+	return 1;
+}
+
 /* Aufraeumen und alles Schliessen */
 int do_cleanup(WINDOW *fenster1, WINDOW *fenster2)
 {
@@ -770,8 +916,8 @@ int do_cleanup(WINDOW *fenster1, WINDOW *fenster2)
 static int print_usage()
 {
   fprintf(stderr,"\n    UVR1611 / UVR61-3 aktuelle Daten lesen vom D-LOGG USB oder BL-NET\n");
-  fprintf(stderr,"    Version 0.8.2 vom 25.02.2008 \n");
-  fprintf(stderr,"\ndl-aktuelle-datenx (-p USB-Port | -i IP:Port) [-t sek] [-h] [-v] [--csv] [--rrd] \n");
+  fprintf(stderr,"    Version 0.9.3 vom 2.11.2012 \n");
+  fprintf(stderr,"\ndl-aktuelle-datenx (-p USB-Port | -i IP:Port) [-t sek] [-r DR] [-h] [-v] [--csv] [--rrd] [--list] \n");
   fprintf(stderr,"    -p USB-Port -> Angabe des USB-Portes,\n");
   fprintf(stderr,"                   an dem der D-LOGG angeschlossen ist.\n");
   fprintf(stderr,"    -i IP:Port  -> Angabe der IP-Adresse und des Ports,\n");
@@ -782,8 +928,11 @@ static int print_usage()
   fprintf(stderr,"                   Sonderfall 0 Sekunden (-t 0): es wird nur ein Datensatz\n");
   fprintf(stderr,"                   gelesen, das Programm beendet und die Daten im csv-Format\n");
   fprintf(stderr,"                   am Bildschirm ausgegeben.\n\n");
+  fprintf(stderr,"        -r DR   -> Angabe des auszulesenden DatenRahmens (1 - 8, Default: 1)\n");
+  fprintf(stderr,"                   (Nur zutreffend bei CAN-Logging.)\n\n");
   fprintf(stderr,"          --csv -> im CSV-Format speichern\n");
   fprintf(stderr,"          --rrd -> output eines RRD tool strings\n");
+  fprintf(stderr,"         --list -> output einer Liste\n");
   fprintf(stderr,"          -h    -> diesen Hilfetext\n");
   fprintf(stderr,"          -v    -> Versionsangabe\n");
   fprintf(stderr,"\n");
@@ -791,6 +940,9 @@ static int print_usage()
   fprintf(stderr,"          Liest alle 30s die aktuellen Daten vom USB-Port 0 .\n");
   fprintf(stderr,"          dl-aktuelle-datenx -i 192.168.1.1:40000 -t 30 \n");
   fprintf(stderr,"          Liest alle 30s die aktuellen Daten von IP 192.168.1.1 Port 40000 .\n");
+  fprintf(stderr,"          dl-aktuelle-datenx -i 192.168.1.1:40000 -t 0 -r 2\n");
+  fprintf(stderr,"          Liest einmal die aktuellen Daten von IP 192.168.1.1 Port 40000,\n");
+  fprintf(stderr,"          2. Datenrahmen.\n");
   fprintf(stderr,"\n");
   return 0;
 }
@@ -812,10 +964,11 @@ int check_arg_getopt(int arg_c, char *arg_v[])
     {
       {"csv", 0, 0, 0},
       {"rrd", 0, 0, 0},
+      {"list", 0, 0, 0},
       {0, 0, 0, 0}
     };
 
-    c = getopt_long(arg_c, arg_v, "hvi:p:t:", long_options, &option_index);
+    c = getopt_long(arg_c, arg_v, "hvi:p:t:r:", long_options, &option_index);
 
     if (c == -1)  /* ende des Parameter-processing */
     {
@@ -832,7 +985,8 @@ int check_arg_getopt(int arg_c, char *arg_v[])
       case 'v':
       {
         fprintf(stderr,"\n    UVR1611 / UVR61-3 aktuelle Daten lesen vom D-LOGG USB oder BL-NET\n");
-        fprintf(stderr,"    Version 0.8.2 vom 25.02.2008 \n");
+        fprintf(stderr,"    Version 0.9.x vom xx.xx.2011 \n");
+		printf("    $Id: dl-aktuelle-datenx.c 108 2012-11-26 15:14:03Z roemix $ \n");
         printf("\n");
         return -1;
         }
@@ -860,42 +1014,27 @@ int check_arg_getopt(int arg_c, char *arg_v[])
       }
       case 'i': /* 05.02. neu */
       {
-        if ( optarg  && strlen(optarg) < 22 && strlen(optarg) > 6)
+        struct hostent* hostinfo = gethostbyname(strtok(optarg,trennzeichen));
+        if(0 == hostinfo)
         {
-          char * c = NULL;
-          c=strtok(optarg,trennzeichen);
-          if ( c )
-          {
-            SERVER_sockaddr_in.sin_addr.s_addr = inet_addr(c);
-            c=strtok(NULL,trennzeichen);
-            if ( c )
-              SERVER_sockaddr_in.sin_port = htons((unsigned short int) atol(c) );
-            else
-            {
-              fprintf(stderr," Port-Angabe falsch: %s\n",optarg);
-              return -1;
-            }
-          }
-          else
-          {
-            fprintf(stderr," IP-Adresse falsch: %s\n",optarg);
-            return -1;
-          }
-          SERVER_sockaddr_in.sin_family = AF_INET;
-  /*      fprintf(stderr,"\n Adresse:port gesetzt: %s:%d\n", inet_ntoa(SERVER_sockaddr_in.sin_addr),
-          ntohs(SERVER_sockaddr_in.sin_port)); */
-          i_is_set=1;
-          ip_zugriff = 1;
-        }
-        else
-        {
-          if ( optarg)
-            fprintf(stderr," IP-Adresse falsch: %s\n",optarg);
-          else
-            fprintf(stderr," keine IP-Adresse angegeben!\n");
+          fprintf(stderr," IP-Adresse konnte nicht aufgeloest werden: %s\n",optarg);
           print_usage();
           return -1;
-        }
+        } 
+        else 
+        {
+          SERVER_sockaddr_in.sin_addr = *(struct in_addr*)*hostinfo->h_addr_list;
+          // SERVER_sockaddr_in.sin_port = htons((unsigned short int) atol(strtok(NULL,trennzeichen)));
+			char* port_par =  strtok(NULL,trennzeichen);
+			if ( port_par == NULL )
+				port_par = "40000";
+			SERVER_sockaddr_in.sin_port = htons((unsigned short int) atol(port_par));
+          SERVER_sockaddr_in.sin_family = AF_INET;
+          fprintf(stderr,"\n Adresse:port gesetzt: %s:%d\n", inet_ntoa(SERVER_sockaddr_in.sin_addr),
+          ntohs(SERVER_sockaddr_in.sin_port));
+          i_is_set=1;
+          ip_zugriff = 1;
+		}
         break;
       }
       case 't':
@@ -929,7 +1068,31 @@ int check_arg_getopt(int arg_c, char *arg_v[])
         {
           rrd_output = 1;  /* RRD */
         }
+        if (  strncmp( long_options[option_index].name, "list", 4) == 0 )
+        {
+          list_output = 1;  /* Liste */
+        }
         break;
+      case 'r':
+      {
+        for(j=0;j<strlen(optarg);j++)
+        {
+          if(isalpha(optarg[j]))
+          {
+            fprintf(stderr," Falsche Parameterangabe bei -t: %s\n", optarg);
+            print_usage();
+            return -1;
+          }
+        }
+        datenrahmen=atoi(optarg);
+        if ( (datenrahmen < 1)  || (datenrahmen > 8) )
+        {
+          fprintf(stderr,"Falsche Parameterangabe:  -r %d \n",(int)datenrahmen);
+          print_usage();
+          return -1;
+        }
+        break;
+      }
       }
       default:
         fprintf(stderr,"?? input mit character code 0%o ??\n", c);
@@ -1162,9 +1325,11 @@ void check_kennung(int received_Bytes)
 /* Abfrage per IP */
 int ip_handling(int sock)
 {
-  unsigned char empfbuf[256];
+//  unsigned char empfbuf[256];
+  UCHAR empfbuf[256];	
   int send_bytes, recv_bytes;
-  int sendbuf[1];
+  UCHAR sendbuf[1];
+//  int sendbuf[1];
 
   sendbuf[0] = 0x81; /* Modusabfrage */
 
@@ -1324,12 +1489,12 @@ void berechne_werte(int anz_regler)
     }
 
 #ifdef DEBUG
-    printf("Anzahl Bytes Geraet-1: %d Anzahl Bytes Geraet-1: %d\n",anz_bytes_1,anz_bytes_2);
+    fprintf(stderr,"Anzahl Bytes Geraet-1: %d Anzahl Bytes Geraet-1: %d\n",anz_bytes_1,anz_bytes_2);
     for (i=0;i<(anz_bytes_1+anz_bytes_2);i++) // Testausgabe 2DL
     {
-        fprintf(stdout,"%2x; ", akt_daten[i]);
+        fprintf(stderr,"%2x; ", akt_daten[i]);
     }
-    fprintf(stdout,"\n");
+    fprintf(stderr,"\n");
 #endif
     i = 0;
     for (j=anz_bytes_1;j<(anz_bytes_1+anz_bytes_2) ;j++)
@@ -1341,9 +1506,9 @@ void berechne_werte(int anz_regler)
 #ifdef DEBUG
     for (i=0;i<anz_bytes_2;i++) // Testausgabe 2DL
     {
-        fprintf(stdout,"%2x; ", akt_daten[i]);
+        fprintf(stderr,"%2x; ", akt_daten[i]);
     }
-    fprintf(stdout,"\n");
+    fprintf(stderr,"\n");
 #endif
   }
 
@@ -1584,7 +1749,8 @@ void waermemengenanz(int regler)
 void testfunktion(void)
 {
   int result;
-  int sendbuf[1];       /*  sendebuffer fuer die Request-Commandos*/
+  UCHAR sendbuf[1];       /*  sendebuffer fuer die Request-Commandos*/
+//  int sendbuf[1];       /*  sendebuffer fuer die Request-Commandos*/
   UCHAR empfbuf[256];
 
   sendbuf[0]=VERSIONSABFRAGE;   /* Senden der Versionsabfrage */
@@ -2156,7 +2322,7 @@ int  write_header2CSV(int regler, FILE *fp)
       {
         if(strlen(kommentar) > 16000 || pBez_S[i] == NULL)
         {
-          fprintf(stderr," trouble in logfileheader: S%d - length=%d\n",i,strlen(kommentar));
+          fprintf(stderr," trouble in logfileheader: S%d - length=%d\n",i,(int)strlen(kommentar));
           return -1;
         }
         sprintf(kommentar+strlen(kommentar)," %s;",pBez_S[i]);
@@ -2167,7 +2333,7 @@ int  write_header2CSV(int regler, FILE *fp)
         {
           if ( (strlen(kommentar) > 16000) || (pBez_A[i] == NULL) || (pBez_DZS[i]==NULL) )
           {
-            fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,strlen(kommentar));
+            fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,(int)strlen(kommentar));
             return -1;
           }
           sprintf(kommentar+strlen(kommentar),"%s;%s;",pBez_A[i],pBez_DZS[i]);
@@ -2177,7 +2343,7 @@ int  write_header2CSV(int regler, FILE *fp)
       {
         if((strlen(kommentar) > 16000) || (pBez_A[i] == NULL))
         {
-          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,strlen(kommentar));
+          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,(int)strlen(kommentar));
           return -1;
         }
         sprintf(kommentar+strlen(kommentar),"%s;",pBez_A[i]);
@@ -2186,7 +2352,7 @@ int  write_header2CSV(int regler, FILE *fp)
       {
         if ( (strlen(kommentar) > 16000) || (pBez_A[i] == NULL) || (pBez_DZS[i]==NULL) )
         {
-          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,strlen(kommentar));
+          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,(int)strlen(kommentar));
           return -1;
         }
         sprintf(kommentar+strlen(kommentar),"%s;%s;",pBez_A[i],pBez_DZS[i]);
@@ -2195,7 +2361,7 @@ int  write_header2CSV(int regler, FILE *fp)
       {
         if( (strlen(kommentar) > 16000) || (pBez_A[i] == NULL) )
         {
-          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,strlen(kommentar));
+          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,(int)strlen(kommentar));
           return -1;
         }
         sprintf(kommentar+strlen(kommentar),"%s;",pBez_A[i]);
@@ -2215,7 +2381,7 @@ int  write_header2CSV(int regler, FILE *fp)
       {
         if(strlen(kommentar) > 16000 || pBez_S[i] == NULL)
         {
-          fprintf(stderr," trouble in logfileheader: S%d - length=%d\n",i,strlen(kommentar));
+          fprintf(stderr," trouble in logfileheader: S%d - length=%d\n",i,(int)strlen(kommentar));
           return -1;
         }
         sprintf(kommentar+strlen(kommentar)," %s;",pBez_S[i]);
@@ -2225,7 +2391,7 @@ int  write_header2CSV(int regler, FILE *fp)
       {
         if ( (strlen(kommentar) > 16000) || (pBez_A[1] == NULL) || (pBez_DZS[1]==NULL) )
         {
-          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,strlen(kommentar));
+          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,(int)strlen(kommentar));
           return -1;
         }
         sprintf(kommentar+strlen(kommentar),"%s;%s;",pBez_A[1],pBez_DZS[1]);
@@ -2234,7 +2400,7 @@ int  write_header2CSV(int regler, FILE *fp)
       {
         if((strlen(kommentar) > 16000) || (pBez_A[i] == NULL))
         {
-          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,strlen(kommentar));
+          fprintf(stderr," trouble in logfileheader: A%d - length=%d\n",i,(int)strlen(kommentar));
           return -1;
         }
         sprintf(kommentar+strlen(kommentar),"%s;",pBez_A[i]);
@@ -2349,7 +2515,10 @@ void write_CSVFile(int regler, FILE *fp, time_t datapoint_time)
     {
       if (WMReg[i] == 1)
 //        fprintf(fp," %.1f;%.1f;", W_Mwh[i],W_kwh[i]);
-        fprintf(fp," %.1f;%.0f%.1f;",Mlstg[i], W_Mwh[i],W_kwh[i]);
+		if (W_Mwh[i] > 0 )
+            fprintf(fp," %.1f;%.0f%05.1f;",Mlstg[i], W_Mwh[i],W_kwh[i]);
+        else
+			fprintf(fp," %.1f;%.0f%.1f;",Mlstg[i], W_Mwh[i],W_kwh[i]);
       else
         fprintf(fp,"  ---;  ---;");
     }
@@ -2437,7 +2606,7 @@ void write_CSVCONSOLE(int regler, time_t datapoint_time)
     for (i=1;i<=2;i++)  /* Ausgangs-Bezeichnungen mit Drehzahl */
     {
 #if DEBUG>3
-      fprintf(stdout,"A%d=%d  dzr=%d  dzs=%d\n",i,AUSG[i],DZR[i],DZStufe[i]);
+      fprintf(stderr,"A%d=%d  dzr=%d  dzs=%d\n",i,AUSG[i],DZR[i],DZStufe[i]);
 #endif
       if (DZR[i] == 1 )
         fprintf(stdout,"%2d;%2d;",AUSG[i],DZStufe[i]);
@@ -2449,7 +2618,7 @@ void write_CSVCONSOLE(int regler, time_t datapoint_time)
     for (i=3;i<=5;i++)  /* Ausgangs-Bezeichnungen */
     {
 #if DEBUG>3
-      fprintf(stdout,"A%2d=%2d\n",i,AUSG[i]);
+      fprintf(stderr,"A%2d=%2d\n",i,AUSG[i]);
 #endif
       fprintf(stdout,"%2d;",AUSG[i]);
     }
@@ -2467,14 +2636,17 @@ void write_CSVCONSOLE(int regler, time_t datapoint_time)
     for (i=8;i<=13;i++)   /* Ausgangs-Bezeichnungen */
     {
 #if DEBUG>3
-      fprintf(stdout,"A%2d=%2d\n",i,AUSG[i]);
+      fprintf(stderr,"A%2d=%2d\n",i,AUSG[i]);
 #endif
       fprintf(stdout,"%2d;",AUSG[i]);
     }
     for (i=1;i<=2;i++)
     {
       if (WMReg[i] == 1)
-        fprintf(stdout," %.1f;%.0f%.1f;",Mlstg[i], W_Mwh[i],W_kwh[i]);
+		if (W_Mwh[i] > 0 )
+			fprintf(stdout," %.1f;%.0f%05.1f;",Mlstg[i], W_Mwh[i],W_kwh[i]);
+		else
+			fprintf(stdout," %.1f;%.0f%.1f;",Mlstg[i], W_Mwh[i],W_kwh[i]);
       else
         fprintf(stdout,"  ---;  ---;");
       }
@@ -2496,7 +2668,7 @@ void write_CSVCONSOLE(int regler, time_t datapoint_time)
     if (WMReg[1] == 1)
     {
       fprintf(stdout,"%4d;",akt_daten[18]*0x100 + akt_daten[17]);
-      fprintf(stdout," %.1f;%.1f;%.1f;",Mlstg[1], W_Mwh[1],W_kwh[1]);
+      fprintf(stdout," %.1f;%.0f;%.1f;",Mlstg[1], W_Mwh[1],W_kwh[1]);
     }
     else
       fprintf(stdout,"  ---;  ---;  ---;  ---;");
@@ -2547,7 +2719,7 @@ void write_rrd(int regler)
     for (i=1;i<=2;i++)  /* Ausgangs-Bezeichnungen mit Drehzahl */
     {
 #if DEBUG>3
-      fprintf(stdout,"A%d=%d  dzr=%d  dzs=%d\n",i,AUSG[i],DZR[i],DZStufe[i]);
+      fprintf(stderr,"A%d=%d  dzr=%d  dzs=%d\n",i,AUSG[i],DZR[i],DZStufe[i]);
 #endif
       if (DZR[i] == 1 )
         fprintf(stdout,"%d:%d:",AUSG[i],DZStufe[i]);
@@ -2559,7 +2731,7 @@ void write_rrd(int regler)
     for (i=3;i<=5;i++)  /* Ausgangs-Bezeichnungen */
     {
 #if DEBUG>3
-      fprintf(stdout,"A%2d=%2d\n",i,AUSG[i]);
+      fprintf(stderr,"A%2d=%2d\n",i,AUSG[i]);
 #endif
       fprintf(stdout,"%d:",AUSG[i]);
     }
@@ -2577,7 +2749,7 @@ void write_rrd(int regler)
     for (i=8;i<=13;i++)   /* Ausgangs-Bezeichnungen */
     {
 #if DEBUG>3
-      fprintf(stdout,"A%2d=%2d\n",i,AUSG[i]);
+      fprintf(stderr,"A%2d=%2d\n",i,AUSG[i]);
 #endif
       fprintf(stdout,"%d:",AUSG[i]);
     }
@@ -2590,6 +2762,143 @@ void write_rrd(int regler)
 
       if (i==1)
         fprintf(stdout,":");
+    }
+  }
+
+  if (uvr_typ == UVR61_3) /* UVR61-3 */
+  {
+    fprintf(stdout,"%d:%d:",AUSG[1],DZStufe[1]);
+    fprintf(stdout,"%d:%d:",AUSG[2],AUSG[3]);
+
+    if (tstbit(akt_daten[15],7) == 0) /* Analogausgang */
+    {
+      temp_byte = akt_daten[15] & ~(1 << 8); /* oberestes Bit auf 0 setzen */
+      fprintf(stdout,"%.1f:",(float)temp_byte / 10);
+    }
+    else
+      fprintf(stdout,"0.0:"); /* Analogausgang nicht aktiv */
+
+    if (WMReg[1] == 1)
+    {
+      fprintf(stdout,"%d:",akt_daten[18]*0x100 + akt_daten[17]);
+      fprintf(stdout,"%.1f:%.1f:%.1f:",Mlstg[1], W_Mwh[1],W_kwh[1]);
+    }
+    else
+      fprintf(stdout,"0:0:0:0:0");
+  }
+
+  fprintf(stdout,"\n");
+  uvr_typ = temp_uvr_typ;
+}
+
+
+/* Ausgabe der Werte als Liste am Bildschirm */
+void write_list(int regler)
+{
+  int i=0;
+  int anzSensoren = 16;
+  UCHAR temp_byte = 0;
+  UCHAR temp_uvr_typ=0;
+
+  temp_uvr_typ = uvr_typ;
+  if (regler == 2)  /* 2. Geraet vorhanden */
+    uvr_typ = uvr_typ2;
+//printf("UVR-Typ: %x\n",uvr_typ);
+  switch(uvr_typ)
+  {
+    case UVR1611: anzSensoren = 16; break; /* UVR1611 */
+    case UVR61_3: anzSensoren = 6; break; /* UVR61-3 */
+  }
+
+  for(i=1;i<=anzSensoren;i++) /* sensor-Bezeichnungen */
+  {
+    switch(SENS_Art[i])
+    {
+      case 0: fprintf(stdout,"0:"); break; /* nicht belegt */
+      case 1: fprintf(stdout,"Sensor%d = %f\n",i,SENS[i]); break; /* digitaler Eingang */
+      case 2:
+      case 3: fprintf(stdout,"Sensor%d = %.1f\n",i,SENS[i]); break; /* Temp / flow */
+      case 6: fprintf(stdout,"Sensor%d = %.0f\n",i,SENS[i]); break;
+      case 7: fprintf(stdout,"Sensor%d = %.1f\n",i,SENS[i]); break;
+      case 9: fprintf(stdout,"Sensor%d = %1.0f\n",i,SENS[i]); break; /* digitaler Eingang */
+      case 10: fprintf(stdout,"Sensor%d = %.1f\n",i,SENS[i]); break;
+      case 15: fprintf(stdout,"Sensor%d = %.1f\n",i,SENS[i]); break;
+    }
+  }
+
+  if (uvr_typ == UVR1611)
+  {
+    /* A1/A2 */
+    for (i=1;i<=2;i++)  /* Ausgangs-Bezeichnungen mit Drehzahl */
+    {
+#if DEBUG>3
+      fprintf(stderr,"A%d=%d  dzr=%d  dzs=%d\n",i,AUSG[i],DZR[i],DZStufe[i]);
+#endif
+      if (DZR[i] == 1 )
+	  {
+        fprintf(stdout,"Ausgang%d = %d\n",i,AUSG[i]);
+        fprintf(stdout,"Drehzahlstufe%d = %d\n",i,DZStufe[i]);
+	  }
+      else
+	  {
+        fprintf(stdout,"Ausgang%d = %d\n",i,AUSG[i]);
+        fprintf(stdout,"Drehzahlstufe%d = %d\n",i,DZStufe[i]);
+	  }
+//        fprintf(stdout,"%d:%d:",AUSG[i],DZStufe[i]);
+        /*  fprintf(fp,"%2d; --;",AUSG[i]); */
+    }
+    /* A3-A5 */
+    for (i=3;i<=5;i++)  /* Ausgangs-Bezeichnungen */
+    {
+#if DEBUG>3
+      fprintf(stderr,"A%2d=%2d\n",i,AUSG[i]);
+#endif
+      fprintf(stdout,"Ausgang%d = %d\n",i,AUSG[i]);
+    }
+    for (i=6;i<=7;i++)  /* Ausgangs-Bezeichnungen mit Drehzahl */
+    {
+#if DEBUG>3
+      fprintf(stderr,"A%d=%d dzr=%d  dzs=%d\n",i,AUSG[i],DZR[i],DZStufe[i]);
+#endif
+      if (DZR[i] == 1 )
+	  {
+        fprintf(stdout,"Ausgang%d = %d\n",i,AUSG[i]);
+        fprintf(stdout,"Drehzahlstufe%d = %d\n",i,DZStufe[i]);
+	  }
+      else
+	  {
+        fprintf(stdout,"Ausgang%d = %d\n",i,AUSG[i]);
+        fprintf(stdout,"Drehzahlstufe%d = %d\n",i,DZStufe[i]);
+	  }
+    }
+    for (i=8;i<=13;i++)   /* Ausgangs-Bezeichnungen */
+    {
+#if DEBUG>3
+      fprintf(stderr,"A%2d=%2d\n",i,AUSG[i]);
+#endif
+      fprintf(stdout,"Ausgang%d = %d\n",i,AUSG[i]);
+    }
+    for (i=1;i<=2;i++)
+    {
+      if (WMReg[i] == 1)
+	  {
+        fprintf(stdout,"Momentanleistung%d = %.1f\n",i,Mlstg[i]);
+        fprintf(stdout,"Leistung%d (MW) = %.0f\n",i, W_Mwh[i]);
+        fprintf(stdout,"Leistung%d (kW) = %.1f\n",i,W_kwh[i]);
+	  }
+      else
+	  {
+        fprintf(stdout,"Momentanleistung%d = %.1f\n",i,Mlstg[i]);
+        fprintf(stdout,"Leistung%d (MW) = %.0f\n",i, W_Mwh[i]);
+        fprintf(stdout,"Leistung%d (kW) = %.1f\n",i,W_kwh[i]);
+	  }
+
+      if (i==1)
+	  {
+        fprintf(stdout,"Momentanleistung%d = %.1f\n",i+1,Mlstg[i]);
+        fprintf(stdout,"Leistung%d (MW) = %.0f\n",i+1, W_Mwh[i]);
+        fprintf(stdout,"Leistung%d (kW) = %.1f\n",i+1,W_kwh[i]);
+	  }
     }
   }
 
@@ -2749,7 +3058,8 @@ int lies_conf(void)
         continue;
 
       char * tmpstr = (char *) malloc(length + 1);
-      bzero(tmpstr,length+1);
+      //bzero(tmpstr,length+1);
+      memset( tmpstr, 0, length+1 );
       strncpy(tmpstr,zielstring,length+1);
 
 #if DEBUG>2
@@ -2821,5 +3131,33 @@ int lies_conf(void)
   fprintf(stderr," Config File %s gelesen.\n", confFile);
 #endif
   return i;
+}
+
+/* Modulmoduskennung abfragen */
+int get_modulmodus(void)
+{
+  int result;
+  UCHAR sendbuf[1];       /*  sendebuffer fuer die Request-Commandos*/
+  UCHAR empfbuf[1];
+//  int sendbuf[1];       /*  sendebuffer fuer die Request-Commandos*/
+//  int empfbuf[1];
+
+  sendbuf[0]=VERSIONSABFRAGE;    /* Senden der Kopfsatz-abfrage */
+
+/* ab hier unterscheiden nach USB und IP */
+  if (usb_zugriff)
+  {
+    write_erg=write(fd,sendbuf,1);
+    if (write_erg == 1)    /* Lesen der Antwort*/
+      result=read(fd,empfbuf,1);
+  }
+  if (ip_zugriff)
+  {
+    write_erg=send(sock,sendbuf,1,0);
+     if ( write_erg == 1)    /* Lesen der Antwort */
+      result  = recv(sock,empfbuf,1,0);
+  }
+
+  return empfbuf[0];
 }
 

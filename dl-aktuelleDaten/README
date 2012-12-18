@@ -5,11 +5,17 @@ Das Progamm "dl-aktuelle-datenx" liest die aktuellen Daten der UVR1611 oder der
 UVR61-3 aus dem D-LOGG USB bzw. dem BL-Net unter Linux ein. Diese werden am 
 Bildschirm dargestellt oder im csv-Format gespeichert.
 
+Ab Version 0.9.0 wird teilweise CAN-Logging unterstuetzt. Hier ist als Parameter
+der jeweilig abzufragende CAN-Datenrahmen anzugeben (Option -r DR).
+
 getestete Umgebung:
 debian Linux 3.1 Sarge mit Kernel 2.6 (Standard-Kernel).
 debian Linux 4.0 Etch mit Kernel 2.6 (Standard-Kernel).
-debian linux 5.0 Lenny mit Kernel 2.6 (Standard-Kernel).
-Kubuntu 7.04, 7.10, 8.04
+debian linux 5.0 Lenny (64 Bit) mit Kernel 2.6 (Standard-Kernel).
+(K)Ubuntu 32- und 64 Bit
+ARM-Architektur:
+- S3C2440 ARM9 - FriendlyARM Mini2440
+- OMAP4430 Processor - PandaBoard
 
 Kernel 2.4 mit USB-Unterstuetzung lief auch, aber ich empfehle auf jeden Fall 
 den 2.6er Kernel.
@@ -34,28 +40,34 @@ der Unix-konform speichert, bearbeitet werden.
 
 Aufruf des Prgramms:
 --------------------
-dl-aktuelle-datenx (-p USB-Port | -i IP:Port) [-t sek] [-h] [-v] [--csv] [--rrd]
+dl-aktuelle-datenx (-p USB-Port | -i IP:Port) [-t sek] [-r DR] [-h] [-v] [--csv] [--rrd] 
     -p USB-Port -> Angabe des USB-Portes,
                    an dem der D-LOGG angeschlossen ist.
     -i IP:Port  -> Angabe der IP-Adresse und des Ports,
                    an dem der BL-Net angeschlossen ist.
         -t sek  -> Angabe der Zeit in Sekunden (min. 30 max. 3600),
                    nach denen die Daten erneut gelesen werden sollen
-                   Default: 30 Sek. (ohne Paramter -t)
+                   Default: 30 Sek. (ohne Paramter -t) 
 
                    Sonderfall 0 Sekunden (-t 0): es wird nur ein Datensatz
                    gelesen, das Programm beendet und die Daten im csv-Format
                    am Bildschirm ausgegeben.
+
+        -r DR   -> Angabe des auszulesenden DatenRahmens (1 - 8, Default: 1)
+                   (Nur zutreffend bei CAN-Logging.)
 
           --csv -> im CSV-Format speichern
           --rrd -> output eines RRD tool strings
           -h    -> diesen Hilfetext
           -v    -> Versionsangabe
 
-Beispiel: dl-aktuelle-datenx -p /dev/ttyUSB0 -t 45
-          Liest alle 45s die aktuellen Daten vom USB-Port 0 .
-          dl-aktuelle-datenx -i 192.168.1.1:40000 -t 60
-          Liest alle 60s die aktuellen Daten von IP 192.168.1.1 Port 40000 .
+Beispiel: dl-aktuelle-datenx -p /dev/ttyUSB0 -t 30 
+          Liest alle 30s die aktuellen Daten vom USB-Port 0 .
+          dl-aktuelle-datenx -i 192.168.1.1:40000 -t 30 
+          Liest alle 30s die aktuellen Daten von IP 192.168.1.1 Port 40000 .
+          dl-aktuelle-datenx -i 192.168.1.1:40000 -t 0 -r 2
+          Liest einmal die aktuellen Daten von IP 192.168.1.1 Port 40000,
+          2. Datenrahmen.
 
 Die Option --rrd liefert als Ausgabe Wert1:Wert2:Wert3... in der gleichen Reihenfolge 
 wie die Option --csv bzw. -t 0 allerdings ohne Datum und Uhrzeit und kann als Eingabe
@@ -84,4 +96,4 @@ Programmierung von wesentlichen Teilen. Ebenfalls vielen Dank an die Firma
 Technische Alternative Elektronische Steuerungsgeraetegesellschaft m.b.H 
 (Oesterreich) fuer ihre Unterstuetzung.
 
-(c)2006,2007,2008 H. Roemer
+(c)2006,2007,2008,2010,2011 H. Roemer
