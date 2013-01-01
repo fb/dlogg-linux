@@ -15,7 +15,7 @@
 #include <ctype.h>
 #include <locale.h>
 #include <string.h>
-#include "dl-lesen.h"
+#include "../dl-lesen.h"
 
 #ifdef WINDOWS
   #include <io.h>
@@ -425,6 +425,7 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
 void aufrufhinweis()
 {
   printf("\nBenutzung: winsol2csv Logdatei Ausgabedatei -csv | -sql Tabelle \n");
+  printf("           Es dürfen keine Pfadangaben bei [Logdatei] angegeben werden!\n");
   printf("-csv          - speichern als CSV-Datei\n");
   printf("-sql Tabelle  - speichern als SQL-Import-Datei\n");
   printf("     Tabelle  - Tabellenname der (My)SQL-Dattenbank\n");
@@ -543,9 +544,11 @@ void get_JahrMonat(char *logfilename)
 
     chmon[0] = logfilename[5];
     chmon[1] = logfilename[6];
+	chmon[2] = '\0'; /* terminate string */
 
     for(i=1;i<5;i++)
         jahr[i-1] = logfilename[i];
+	jahr[4]	 = '\0'; /* terminate string */
 
     struct_winsol.jahr = atoi(chjahr);
     struct_winsol.monat = atoi(chmon);
