@@ -28,7 +28,7 @@
  * Version 0.9.0    11.01.2011 CAN-Logging                                   *
  * Version 0.9.3      .06.2012 Test CAN BC                                   *
  * Version 0.9.4    05.01.2013  Anpassung CAN-Logging                        *
- *                  $Id: dl-lesenx.c 111 2012-12-18 21:31:55Z roemix $       *
+ *                  $Id$       *
  *****************************************************************************/
 
 #include <sys/types.h>
@@ -485,7 +485,7 @@ int check_arg_getopt(int arg_c, char *arg_v[])
       {
         printf("\n    UVR1611/UVR61-3 Daten lesen vom D-LOGG USB / BL-Net \n");
         printf("    Version 0.9.4 vom 05.01.2013 \n");
-        printf("    $Id: dl-lesenx.c 111 2012-12-18 21:31:55Z roemix $ \n");
+        printf("    $Id$ \n");
         return 0;
       }
       case 'h':
