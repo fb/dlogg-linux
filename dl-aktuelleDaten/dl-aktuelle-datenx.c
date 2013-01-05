@@ -471,7 +471,7 @@ fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);
 								fprintf(stderr, "\n %s Fehler beim Schliessen der IP-Verbindung!\n", sZeit);
 							}
 							sleep(akt_daten[1]);
-							sr = start_socket();
+							sr = start_socket(fenster1, fenster2);
 							if (sr > 1)
 							{
 								return sr;
