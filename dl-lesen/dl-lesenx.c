@@ -27,6 +27,7 @@
  * Version 0.8.1    04.12.2009 --dir Parameter aufgenommen                   *
  * Version 0.9.0    11.01.2011 CAN-Logging                                   *
  * Version 0.9.3      .06.2012 Test CAN BC                                   *
+ * Version 0.9.4    05.01.2013  Anpassung CAN-Logging                        *
  *                  $Id: dl-lesenx.c 111 2012-12-18 21:31:55Z roemix $       *
  *****************************************************************************/
 
@@ -262,12 +263,12 @@ int main(int argc, char *argv[])
   i=1;
   while ((anz_ds == -3) && (uvr_modus == 0xDC) && (i < 3))
   {
-        sleep(3);
         if ( shutdown(sock,SHUT_RDWR) == -1 ) /* IP-Socket schliessen */
         {
-                zeitstempel();
+            zeitstempel();
             fprintf(stderr, "\n %s Fehler beim Schliessen der IP-Verbindung!\n", sZeit);
         }
+        sleep(3);
         sr = start_socket();
         if (sr > 1)
         {
@@ -483,8 +484,8 @@ int check_arg_getopt(int arg_c, char *arg_v[])
       case 'v':
       {
         printf("\n    UVR1611/UVR61-3 Daten lesen vom D-LOGG USB / BL-Net \n");
-        printf("    Version 0.9.3 vom 15.09.2012 \n");
-                printf("    $Id: dl-lesenx.c 111 2012-12-18 21:31:55Z roemix $ \n");
+        printf("    Version 0.9.4 vom 05.01.2013 \n");
+        printf("    $Id: dl-lesenx.c 111 2012-12-18 21:31:55Z roemix $ \n");
         return 0;
       }
       case 'h':

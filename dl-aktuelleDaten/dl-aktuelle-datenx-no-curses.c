@@ -43,7 +43,8 @@
  * Version 0.8.2	25.02.2008  --rrd Unterstuetzung                         *
  * Version 0        xx.xx.2010  CAN-Logging                                  *
  * Version 0.9.3    26.11.2012                                               *
- *                  $Id: dl-aktuelle-datenx.c 106 2012-11-01 12:29:57Z roemix $. *
+ * Version 0.9.4    05.01.2013  Anpassung CAN-Logging                        *
+*                  $Id: dl-aktuelle-datenx.c 106 2012-11-01 12:29:57Z roemix $. *
  *****************************************************************************/
 
 #include <sys/types.h>
@@ -422,13 +423,14 @@ fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);
 					{
 						if ( akt_daten[2] == (akt_daten[0] + akt_daten[1]) % 0x100 )
 						{
-						//	fprintf(stderr, " CAN-Logging: %d. Schlafenszeit fuer %d Sekunden\n",i , akt_daten[1]);
-							sleep(akt_daten[1]);
+							zeitstempel();
+							fprintf(stderr, "%s CAN-Logging: %d. Schlafenszeit fuer %d Sekunden\n",sZeit ,i , akt_daten[1]);
 							if ( shutdown(sock,SHUT_RDWR) == -1 ) /* IP-Socket schliessen */
 							{
 								zeitstempel();
 								fprintf(stderr, "\n %s Fehler beim Schliessen der IP-Verbindung!\n", sZeit);
 							}
+							sleep(akt_daten[1]);
 							sr = start_socket();
 							if (sr > 1)
 							{
@@ -739,7 +741,7 @@ int do_cleanup(void)
 static int print_usage()
 {
   fprintf(stderr,"\n    UVR1611 / UVR61-3 aktuelle Daten lesen vom D-LOGG USB oder BL-NET\n");
-  fprintf(stderr,"    Version 0.9.3 vom 26.11.2012 \n");
+  fprintf(stderr,"    Version 0.9.4 vom 05.01.2013 \n");
   fprintf(stderr,"\ndl-aktuelle-datenx (-p USB-Port | -i IP:Port) [-t sek] [-r DR] [-h] [-v] [--csv] [--rrd] [--list] \n");
   fprintf(stderr,"    -p USB-Port -> Angabe des USB-Portes,\n");
   fprintf(stderr,"                   an dem der D-LOGG angeschlossen ist.\n");
@@ -809,7 +811,7 @@ int check_arg_getopt(int arg_c, char *arg_v[])
       case 'v':
       {
         fprintf(stderr,"\n    UVR1611 / UVR61-3 aktuelle Daten lesen vom D-LOGG USB oder BL-NET\n");
-        fprintf(stderr,"    Version 0.9.x vom xx.xx.2011 \n");
+        fprintf(stderr,"    Version 0.9.4 vom 05.01.2013 \n");
 		printf("    $Id: dl-aktuelle-datenx.c 106 2012-11-01 12:29:57Z roemix $ \n");
         printf("\n");
         return -1;
