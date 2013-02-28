@@ -28,11 +28,13 @@
  * Version 0.9.0    11.01.2011 CAN-Logging                                   *
  * Version 0.9.3      .06.2012 Test CAN BC                                   *
  * Version 0.9.4    05.01.2013  Anpassung CAN-Logging                        *
+ * Version 0.9.5    24.02.2013  Ueberarbeitung USB-Zugriff                   *
  *                  $Id$       *
  *****************************************************************************/
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <termios.h>
 #include <stdio.h>
@@ -62,6 +64,7 @@ extern char *optarg;
 extern int optind, opterr, optopt;
 int can_typ[8];
 int start_socket(void);
+void close_usb(void);
 int do_cleanup(void);
 int check_arg(int arg_c, char *arg_v[]);
 int check_arg_getopt(int arg_c, char *arg_v[]);
@@ -74,6 +77,7 @@ int close_logfile(void);
 int get_modulmodus(void);
 int get_modultyp(void);
 int kopfsatzlesen(void);
+void init_usb(void);
 void testfunktion(void);
 int copy_UVR2winsol_1611(u_DS_UVR1611_UVR61_3 *dsatz_uvr1611, DS_Winsol *dsatz_winsol );
 int copy_UVR2winsol_1611_CAN(s_DS_CAN *dsatz_uvr1611, DS_Winsol  *dsatz_winsol );
@@ -107,7 +111,7 @@ int ip_handling(int sock);
 
 int csv = 0;    /* Speichern im csv-Format (csv = 1) oder winsol-Format (csv = 0) */
 int reset = 0;    /* Ruecksetzen des DL nach Lesen der Daten 1=>true, 0=>false */
-int fd_serialport,  write_erg; /* anz_datensaetze; */
+int fd,  write_erg; /* anz_datensaetze; */
 struct sockaddr_in SERVER_sockaddr_in;
 
 int csv_header_done=-1;
@@ -134,11 +138,10 @@ KopfsatzA8 kopf_A8[1];
 KOPFSATZ_DC kopf_DC[1];
 int sock;
 
+char Version[]="Version 0.9.5 vom 27.02.2013";
 
 int main(int argc, char *argv[])
 {
-  struct termios newtio; /* will be used for new port settings */
-
   int i, sr=0, anz_ds=0, erg_check_arg, erg=0; //i_varLogFile, 
   char *pvarLogFile;
 
@@ -170,7 +173,6 @@ int main(int argc, char *argv[])
 //  else
 //    i_varLogFile = 1;
 
-
   if ( csv == 1 && (fp_csvfile=fopen("alldata.csv","a")) == NULL )
   {
     printf("csv file %s konnte nicht erstellt werden\n",varLogFile);
@@ -191,39 +193,18 @@ int main(int argc, char *argv[])
         sr = start_socket();
         if (sr > 1)
         {
-                return sr;
+           return sr;
         }
+		else
+           uvr_modus = get_modulmodus(); /* Welcher Modus
+                      0xA8 (1DL) / 0xD1 (2DL) / 0xDC (CAN) */
   } /* Ende IP-Zugriff */
   else  if (usb_zugriff && !ip_zugriff)
   {
-    /* first open the serial port for reading and writing */
-    fd_serialport = open(dlport, O_RDWR | O_NOCTTY );
-    if (fd_serialport < 0)
-    {
-      zeitstempel();
-      if (fp_varlogfile)
-        fprintf(fp_varlogfile,"%s - %s -- kann nicht auf port %s zugreifen \n",sDatum, sZeit,dlport);
-        perror(dlport);
-        do_cleanup();
-        return (-1);
-    }
-
-    /* save current port settings */
-    tcgetattr(fd_serialport,&oldtio);
-    /* initialize the port settings structure to all zeros */
-    //bzero( &newtio, sizeof(newtio));
-    memset( &newtio, 0, sizeof(newtio) );
-    /* then set the baud rate, handshaking and a few other settings */
-    newtio.c_cflag = BAUDRATE | CRTSCTS | CS8 | CLOCAL | CREAD;
-    newtio.c_iflag = IGNPAR;
-    newtio.c_oflag = 0;
-    /* set input mode (non-canonical, no echo,...) */
-    newtio.c_lflag = 0;
-    newtio.c_cc[VTIME]    = 0;   /* inter-character timer unused */
-    newtio.c_cc[VMIN]     = 1;   /* blocking read until first char received */
-
-    tcflush(fd_serialport, TCIFLUSH);
-    tcsetattr(fd_serialport,TCSANOW,&newtio);
+    init_usb();
+    uvr_modus = get_modulmodus(); /* Welcher Modus
+                      0xA8 (1DL) / 0xD1 (2DL) / 0xDC (CAN) */
+    close_usb();
   }
   else
   {
@@ -231,17 +212,14 @@ int main(int argc, char *argv[])
     do_cleanup();
   }
 
-  uvr_modus = get_modulmodus(); /* Welcher Modus
-                                0xA8 (1DL) / 0xD1 (2DL) / 0xDC (CAN) */
-
   switch (uvr_modus)
   {
         case 0xDC: fprintf(stderr, " CAN-Logging erkannt.\n"); break;
         case 0xA8: fprintf(stderr, " 1DL-Logging erkannt.\n"); break;
         case 0xD1: fprintf(stderr, " 2DL-Logging erkannt.\n"); break;
-        default:         fprintf(stderr, " Kein Logging erkannt!\n Abbruch!\n");
-                                do_cleanup();
-                                return ( -1 );
+        default:   fprintf(stderr, " Kein Logging erkannt!\n Abbruch!\n");
+                   do_cleanup();
+                   return ( -1 );
   }
 
 //  Firmware BL-Net:
@@ -252,17 +230,19 @@ int main(int argc, char *argv[])
   i=1;
   do                        /* max. 5 durchlgaenge */
   {
-//#ifdef DEBUG
+#ifdef DEBUG
       fprintf(stderr, "\n Kopfsatzlesen - Versuch%d\n",i);
-//#endif
+#endif
       anz_ds = kopfsatzlesen();
       i++;
   }
   while((anz_ds == -1) && (i < 6));
-
   i=1;
+  
   while ((anz_ds == -3) && (uvr_modus == 0xDC) && (i < 3))
   {
+     if (ip_zugriff && !usb_zugriff)
+     {	 
         if ( shutdown(sock,SHUT_RDWR) == -1 ) /* IP-Socket schliessen */
         {
             zeitstempel();
@@ -277,15 +257,35 @@ int main(int argc, char *argv[])
         uvr_modus = get_modulmodus();
         switch (uvr_modus)
         {
-                case 0xDC: fprintf(stderr, " CAN-Logging erkannt.\n"); break;
-                case 0xA8: fprintf(stderr, " 1DL-Logging erkannt.\n"); break;
-                case 0xD1: fprintf(stderr, " 2DL-Logging erkannt.\n"); break;
-                default:         fprintf(stderr, " Kein Logging erkannt!\n Abbruch!\n");
-                                        do_cleanup();
-                                        return ( -1 );
+           case 0xDC: fprintf(stderr, " CAN-Logging erkannt.\n"); break;
+           case 0xA8: fprintf(stderr, " 1DL-Logging erkannt.\n"); break;
+           case 0xD1: fprintf(stderr, " 2DL-Logging erkannt.\n"); break;
+           default:   fprintf(stderr, " Kein Logging erkannt!\n Abbruch!\n");
+                      do_cleanup();
+                      return ( -1 );
         }
         anz_ds = kopfsatzlesen();
         i++;
+	 }
+	 
+	 if (usb_zugriff && !ip_zugriff)
+	 {
+	    close_usb();
+        sleep(3);
+		init_usb();
+        uvr_modus = get_modulmodus();
+        switch (uvr_modus)
+        {
+           case 0xDC: fprintf(stderr, " CAN-Logging erkannt.\n"); break;
+           case 0xA8: fprintf(stderr, " 1DL-Logging erkannt.\n"); break;
+           case 0xD1: fprintf(stderr, " 2DL-Logging erkannt.\n"); break;
+           default:   fprintf(stderr, " Kein Logging erkannt!\n Abbruch!\n");
+                      do_cleanup();
+                      return ( -1 );
+        }
+        anz_ds = kopfsatzlesen();
+        i++;
+	 }
   }
 
   switch(anz_ds)
@@ -317,7 +317,7 @@ int main(int argc, char *argv[])
   {
     case 0xA8: erg = datenlesen_A8(anz_ds); break;
     case 0xD1: erg = datenlesen_D1(anz_ds); break;
-        case 0xDC: erg = datenlesen_DC(anz_ds); break;
+    case 0xDC: erg = datenlesen_DC(anz_ds); break;
   }
 
   printf("\n%d Datensaetze insgesamt geschrieben.\n",erg);
@@ -333,7 +333,7 @@ int main(int argc, char *argv[])
   /* ************************************************************************ */
 
   /* restore the old port settings before quitting */
-  //tcsetattr(fd_serialport,TCSANOW,&oldtio);
+  //tcsetattr(fd,TCSANOW,&oldtio);
 
   int retval=0;
   if ( close_logfile() == -1)
@@ -346,6 +346,47 @@ int main(int argc, char *argv[])
     retval=-1;
 
   return (retval);
+}
+
+
+/* Init USB-Zugriff */
+void init_usb(void)
+{
+  struct termios newtio;  /* will be used for new port settings */
+
+    /************************************************************************/
+    /*  open the serial port for reading and writing */
+    fd = open(dlport, O_RDWR | O_NOCTTY); // | O_NDELAY);
+    if (fd < 0)
+    {
+      zeitstempel();
+      if (fp_varlogfile)
+        fprintf(fp_varlogfile,"%s - %s -- kann nicht auf port %s zugreifen \n",sDatum, sZeit,dlport);
+        perror(dlport);
+        do_cleanup();
+        exit(-1);
+     }
+    /* save current port settings */
+    tcgetattr(fd,&oldtio);
+    /* initialize the port settings structure to all zeros */
+    //bzero(&newtio, sizeof(newtio));
+    memset( &newtio, 0, sizeof(newtio) );
+    /* then set the baud rate, handshaking and a few other settings */
+    cfsetspeed(&newtio, BAUDRATE);
+    newtio.c_cflag &= ~PARENB;
+    newtio.c_cflag &= ~CSTOPB;
+    newtio.c_cflag &= ~CSIZE;
+    newtio.c_cflag |= CS8;
+    newtio.c_cflag |= (CLOCAL | CREAD);
+    newtio.c_cflag &= ~CRTSCTS;
+    /* set input mode (non-canonical, no echo,...) */
+    newtio.c_lflag = 0;
+    newtio.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+    newtio.c_oflag &= ~OPOST;          /* setze "raw" Input */
+    newtio.c_cc[VTIME]    = 0;   /* inter-character timer unused */
+    newtio.c_cc[VMIN]     = 1;   /* blocking read until first char received */
+    tcflush(fd, TCIFLUSH);
+    tcsetattr(fd,TCSANOW,&newtio);
 }
 
 /* socket erzeugen und Verbindung aufbauen */
@@ -373,20 +414,25 @@ int start_socket(void)
       return 4;
     }
 
-        return 1;
+    return 1;
+}
+
+/* USB-Port schliessen */
+void close_usb(void)
+{
+  if ( fd > 0 )
+    {
+      // reset and close
+      tcflush(fd, TCIFLUSH);
+      tcsetattr(fd,TCSANOW,&oldtio);
+    }
 }
 
 /* Aufraeumen und alles Schliessen */
 int do_cleanup(void)
 {
   int retval=0;
-
-  if ( fd_serialport > 0 )
-    {
-      // reset and close
-      tcflush(fd_serialport, TCIFLUSH);
-      tcsetattr(fd_serialport,TCSANOW,&oldtio);
-    }
+  close_usb();
 
   if (ip_zugriff)
     close(sock); /* IP-Socket schliessen */
@@ -450,7 +496,6 @@ static int print_usage()
 /* Auswertung der uebergebenen Argumente */
 int check_arg_getopt(int arg_c, char *arg_v[])
 {
-
   int c = 0;
   int p_is_set=-1;
   int i_is_set=-1;
@@ -484,7 +529,7 @@ int check_arg_getopt(int arg_c, char *arg_v[])
       case 'v':
       {
         printf("\n    UVR1611/UVR61-3 Daten lesen vom D-LOGG USB / BL-Net \n");
-        printf("    Version 0.9.4 vom 05.01.2013 \n");
+        printf("    %s \n",Version);
         printf("    $Id$ \n");
         return 0;
       }
@@ -1147,9 +1192,9 @@ int get_modulmodus(void)
 /* ab hier unterscheiden nach USB und IP */
   if (usb_zugriff)
   {
-    write_erg=write(fd_serialport,sendbuf,1);
+    write_erg=write(fd,sendbuf,1);
     if (write_erg == 1)    /* Lesen der Antwort*/
-      result=read(fd_serialport,empfbuf,1);
+      result=read(fd,empfbuf,1);
   }
   if (ip_zugriff)
   {
@@ -1199,9 +1244,9 @@ int get_modultyp(void)
 
   if (usb_zugriff)
   {
-    write_erg=write(fd_serialport,sendbuf,8);
+    write_erg=write(fd,sendbuf,8);
     if (write_erg == 1)    /* Lesen der Antwort*/
-      result=read(fd_serialport,empfbuf,5);
+      result=read(fd,empfbuf,5);
   }
   if (ip_zugriff)
   {
@@ -1253,41 +1298,103 @@ int kopfsatzlesen(void)
   UCHAR sendbuf[1];       /*  sendebuffer fuer die Request-Commandos*/
 //  int sendbuf[1];       /*  sendebuffer fuer die Request-Commandos*/
   durchlauf=0;
+  int in_bytes=0;
 
   do
   {
-      sendbuf[0]=KOPFSATZLESEN;    /* Senden der Kopfsatz-abfrage */
+    sendbuf[0]=KOPFSATZLESEN;    /* Senden der Kopfsatz-abfrage */
 
     if (usb_zugriff)
     {
-      write_erg=write(fd_serialport,sendbuf,1);
+      init_usb();
+      fd_set rfds;
+      struct timeval tv;
+      int retval=0;
+      int retry=0;
+      int retry_interval=2; 
+	    
+      write_erg=write(fd,sendbuf,1);
       if (write_erg == 1)    /* Lesen der Antwort*/
       {
-            switch(uvr_modus)
-                {
-          case 0xD1: result=read(fd_serialport,kopf_D1,14); break;
-          case 0xA8: result=read(fd_serialport,kopf_A8,13); break;
-          case 0xDC: result=read(fd_serialport,kopf_DC,21);
-                            if (kopf_DC[0].all_bytes[0] == 0xAA)
-                                        {
-                                                fprintf(stderr, " CAN-Logging: BL-Net noch nicht bereit, 3 Sekunden warten...\n");
-                                                sleep(3); /* 3 Sekunden warten */
-                                                write_erg=write(fd_serialport,sendbuf,1);
-                                                if (write_erg == 1)    /* Lesen der Antwort*/
-                                                {
-                                                        if (kopf_DC[0].all_bytes[0] == 0xAA)
-                                                        {
-                                                                fprintf(stderr, " CAN-Logging: BL-Net immer noch nicht bereit. Abbruch!\n");
-                                                                return ( -3 );
-                                                        }
-                                                        else if (kopf_DC[0].all_bytes[0] != 0xAA)
-                                                                result=read(fd_serialport,kopf_DC,21);
-                                                }
-                                        }
-                                        break;
+        retry=0;
+        do
+        {
+          in_bytes=0;
+          FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
+          FD_SET(fd, &rfds);
+          tv.tv_sec = retry_interval; /* Wait up to five seconds. */
+          tv.tv_usec = 0;
+          retval = select(fd+1, &rfds, NULL, NULL, &tv);
+          /* Don't rely on the value of tv now -  will contain remaining time or so */
+
+          zeitstempel();
+
+          if (retval == -1)
+            perror("select(fd)");
+          else if (retval)
+          {
+#ifdef DEBUG
+            fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+#endif
+            if (FD_ISSET(fd,&rfds))
+            {
+              ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+  fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+              switch(uvr_modus)
+              {
+                case 0xD1: if (in_bytes == 14)
+                           {
+                             result=read(fd,kopf_D1,14);
+                             retry=4;
+                           }
+                           break;
+                case 0xA8: if (in_bytes == 13) 
+                           {
+                              result=read(fd,kopf_A8,13);
+                              retry=4;
+                            }
+                            break;
+                case 0xDC: if ((in_bytes == 21) || (in_bytes == 1))
+                           {
+                              result=read(fd,kopf_DC,21);
+                              retry=4;
+                            }
+                           if (kopf_DC[0].all_bytes[0] == 0xAA)
+                             return -3;
+                           break;
+              }
+            }
+#ifdef DEBUG
+            if (akt_daten[0] != 0xAB)
+            {
+              fprintf(stderr,"\nDie ersten 27 Byte Rohdaten vom D-LOGG USB:\n");
+              for (i=0;i<27;i++)
+                fprintf(stderr,"0x%2x; ", akt_daten[i]);
+              fprintf(stderr,"\n");
+            }
+#endif
+#ifdef DEBUG
+            fprintf(stderr,"r%d s%d received bytes=%d \n",retry,send_retry,result);
+            if (result == 1)
+              fprintf(stderr," buffer: %X\n",akt_daten[0]);
+              /* FD_ISSET(socket, &rfds) will be true. */
+#endif
+          }
+          else
+          {
+#ifdef DEBUG
+            fprintf(stderr,"%s - No data within %d seconds. r%d s%d\n",sZeit,retry_interval,
+            retry,send_retry);
+#endif
+            sleep(retry_interval);
+            retry++;
+          }
         }
+        while( retry < 3 && in_bytes != 0);
       }
-    }
+	}
 
     if (ip_zugriff)
     {
@@ -1311,42 +1418,38 @@ int kopfsatzlesen(void)
 
       if (write_erg == 1)    /* Lesen der Antwort */
       {
-            switch(uvr_modus)
-                {
+        switch(uvr_modus)
+        {
           case 0xD1: result = recv(sock,kopf_D1,14,0); break;
           case 0xA8: result = recv(sock,kopf_A8,13,0); break;
           case 0xDC: result = recv(sock,kopf_DC,21,0);
-                             if (kopf_DC[0].all_bytes[0] == 0xAA)
-                                         {
-                                                return -3;
-                                         }
-                                        break;
+                     if (kopf_DC[0].all_bytes[0] == 0xAA)
+                       return -3;
+                     break;
         }
       }
     }
 
     switch(uvr_modus)
     {
-      case 0xD1:
-            pruefz = berechneKopfpruefziffer_D1( kopf_D1 );
-            merk_pruefz = kopf_D1[0].pruefsum;
-        break;
-      case 0xA8:
-        pruefz = berechneKopfpruefziffer_A8( kopf_A8 );
-        merk_pruefz = kopf_A8[0].pruefsum;
-                break;
-          case 0xDC:
+      case 0xD1: pruefz = berechneKopfpruefziffer_D1( kopf_D1 );
+                 merk_pruefz = kopf_D1[0].pruefsum;
+                 break;
+      case 0xA8: pruefz = berechneKopfpruefziffer_A8( kopf_A8 );
+                 merk_pruefz = kopf_A8[0].pruefsum;
+                 break;
+      case 0xDC:
         #ifdef DEBUG
                 fprintf(stderr, " CAN-Logging-Test: Anzahl Datenrahmen laut Byte 6: %x\n",kopf_DC[0].all_bytes[5]);
         #endif
-            pruefz = berechneKopfpruefziffer_DC( kopf_DC );
+                pruefz = berechneKopfpruefziffer_DC( kopf_DC );
                 switch(kopf_DC[0].all_bytes[5])
                 {
                 case 1: merk_pruefz = kopf_DC[0].DC_Rahmen1.pruefsum;
                         #ifdef DEBUG
                         fprintf(stderr,"  Durchlauf #%d  berechnete pruefziffer:%d DC_Rahmen1.pruefsumme:%d\n",durchlauf,pruefz%0x100,kopf_DC[0].DC_Rahmen1.pruefsum);
                         #endif
-                break;
+                        break;
                   case 2: merk_pruefz = kopf_DC[0].DC_Rahmen2.pruefsum;
                         #ifdef DEBUG
                         fprintf(stderr,"  Durchlauf #%d  berechnete pruefziffer:%d DC_Rahmen2.pruefsumme:%d\n",durchlauf,pruefz%0x100,kopf_DC[0].DC_Rahmen2.pruefsum);
@@ -1382,11 +1485,10 @@ int kopfsatzlesen(void)
                         fprintf(stderr,"  Durchlauf #%d  berechnete pruefziffer:%d DC_Rahmen8.pruefsumme:%d\n",durchlauf,pruefz%0x100,kopf_DC[0].DC_Rahmen8.pruefsum);
                         #endif
                         break;
-                  default:
-                                fprintf(stderr,"  CAN-Logging-Test:  Kennung %x\n",kopf_DC[0].all_bytes[0]);
+                  default: fprintf(stderr,"  CAN-Logging-Test:  Kennung %x\n",kopf_DC[0].all_bytes[0]);
                 }
         break;
-        }
+    }
 
     durchlauf++;
    #ifdef DEBUG
@@ -1412,40 +1514,39 @@ int kopfsatzlesen(void)
   switch(uvr_modus)
   {
     case 0xD1: start_adresse = kopf_D1[0].startadresse;
-                           end_adresse = kopf_D1[0].endadresse;
-      break;
+                 end_adresse = kopf_D1[0].endadresse;
+               break;
     case 0xA8: start_adresse = kopf_A8[0].startadresse;
-                   end_adresse = kopf_A8[0].endadresse;
-      break;
-        case 0xDC:
-          switch(kopf_DC[0].all_bytes[5])
-          {
+                 end_adresse = kopf_A8[0].endadresse;
+               break;
+    case 0xDC: switch(kopf_DC[0].all_bytes[5])
+               {
                   case 1: start_adresse = kopf_DC[0].DC_Rahmen1.startadresse;
-                                  end_adresse = kopf_DC[0].DC_Rahmen1.endadresse;
-                break;
+                            end_adresse = kopf_DC[0].DC_Rahmen1.endadresse;
+                          break;
                   case 2: start_adresse = kopf_DC[0].DC_Rahmen2.startadresse;
-                                  end_adresse = kopf_DC[0].DC_Rahmen2.endadresse;
-                        break;
+                             end_adresse = kopf_DC[0].DC_Rahmen2.endadresse;
+                          break;
                   case 3: start_adresse = kopf_DC[0].DC_Rahmen3.startadresse;
-                                  end_adresse = kopf_DC[0].DC_Rahmen3.endadresse;
-                        break;
+                            end_adresse = kopf_DC[0].DC_Rahmen3.endadresse;
+                          break;
                   case 4: start_adresse = kopf_DC[0].DC_Rahmen4.startadresse;
-                                  end_adresse = kopf_DC[0].DC_Rahmen4.endadresse;
-                        break;
+                            end_adresse = kopf_DC[0].DC_Rahmen4.endadresse;
+                          break;
                   case 5: start_adresse = kopf_DC[0].DC_Rahmen5.startadresse;
-                                  end_adresse = kopf_DC[0].DC_Rahmen5.endadresse;
-                        break;
+                            end_adresse = kopf_DC[0].DC_Rahmen5.endadresse;
+                          break;
                   case 6: start_adresse = kopf_DC[0].DC_Rahmen6.startadresse;
-                                  end_adresse = kopf_DC[0].DC_Rahmen6.endadresse;
-                        break;
+                            end_adresse = kopf_DC[0].DC_Rahmen6.endadresse;
+                          break;
                   case 7: start_adresse = kopf_DC[0].DC_Rahmen7.startadresse;
-                                  end_adresse = kopf_DC[0].DC_Rahmen7.endadresse;
-                        break;
+                            end_adresse = kopf_DC[0].DC_Rahmen7.endadresse;
+                          break;
                   case 8: start_adresse = kopf_DC[0].DC_Rahmen8.startadresse;
-                                  end_adresse = kopf_DC[0].DC_Rahmen8.endadresse;
-                        break;
-          }
-      break;
+                            end_adresse = kopf_DC[0].DC_Rahmen8.endadresse;
+                          break;
+                }
+                break;
   }
 
   switch(uvr_modus)
@@ -1556,9 +1657,6 @@ int kopfsatzlesen(void)
   if ( uvr_modus == 0xDC )
   {
     uvr_typ = 0x76;  /* CAN-Logging nur mit UVR1611 */
-
-
-
   }
 
   switch( anz_ds)
@@ -1566,12 +1664,12 @@ int kopfsatzlesen(void)
     case -1: zeitstempel();
             fprintf(fp_varlogfile,"%s - %s -- Falschen Wert im Low-Byte Endadresse gelesen! Wert: %x\n",sDatum, sZeit,*end_adresse);
             return -1;
-        case -2: zeitstempel();
+    case -2: zeitstempel();
             fprintf(fp_varlogfile,"%s - %s -- Keine Daten vorhanden.\n",sDatum, sZeit);
             return -1;
     default: if (uvr_modus != 0xDC)
-                                printf(" Anzahl Datensaetze aus Kopfsatz: %i\n",anz_ds);
-                        break;
+                printf(" Anzahl Datensaetze aus Kopfsatz: %i\n",anz_ds);
+             break;
   }
 
   return anz_ds;
@@ -1586,21 +1684,21 @@ void testfunktion(void)
   UCHAR empfbuf[256];
 
   sendbuf[0]=VERSIONSABFRAGE;   /* Senden der Versionsabfrage */
-  write_erg=write(fd_serialport,sendbuf,1);
+  write_erg=write(fd,sendbuf,1);
   if (write_erg == 1)    /* Lesen der Antwort*/
-    result=read(fd_serialport,empfbuf,1);
+    result=read(fd,empfbuf,1);
   printf("Vom DL erhalten Version: %x\n",empfbuf[0]);
 
   sendbuf[0]=FWABFRAGE;    /* Senden der Firmware-Versionsabfrage */
-  write_erg=write(fd_serialport,sendbuf,1);
+  write_erg=write(fd,sendbuf,1);
   if (write_erg == 1)    /* Lesen der Antwort*/
-    result=read(fd_serialport,empfbuf,1);
+    result=read(fd,empfbuf,1);
   printf("Vom DL erhalten Version FW: %x\n",empfbuf[0]);
 
   sendbuf[0]=MODEABFRAGE;    /* Senden der Modus-abfrage */
-  write_erg=write(fd_serialport,sendbuf,1);
+  write_erg=write(fd,sendbuf,1);
   if (write_erg == 1)    /* Lesen der Antwort*/
-    result=read(fd_serialport,empfbuf,1);
+    result=read(fd,empfbuf,1);
   printf("Vom DL erhalten Modus: %x\n",empfbuf[0]);
 }
 
@@ -2274,7 +2372,7 @@ int datenlesen_A8(int anz_datensaetze)
 {
   unsigned modTeiler;
   int i, merk_i, fehlerhafte_ds, result, lowbyte, middlebyte, merkmiddlebyte, tmp_erg = 0;
-  int Bytes_for_0xA8 = 65, monatswechsel = 0;
+  int Bytes_for_0xA8 = 65, monatswechsel = 0, in_bytes=0;
   u_DS_UVR1611_UVR61_3 u_dsatz_uvr[1];
   DS_Winsol dsatz_winsol[1];
   DS_Winsol *puffer_dswinsol = &dsatz_winsol[0];
@@ -2295,10 +2393,50 @@ int datenlesen_A8(int anz_datensaetze)
   sendbuf[0]=VERSIONSABFRAGE;   /* Senden der Versionsabfrage */
   if (usb_zugriff)
   {
-    write_erg=write(fd_serialport,sendbuf,1);
+    close_usb();
+    init_usb();
+    fd_set rfds;
+    struct timeval tv;
+    int retval=0;
+    int retry=0;
+    int retry_interval=2; 
+
+    write_erg=write(fd,sendbuf,1);
     if (write_erg == 1)    /* Lesen der Antwort*/
-      result=read(fd_serialport,empfbuf,1);
+    {
+      do
+      {
+        in_bytes=0;
+        FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
+        FD_SET(fd, &rfds);
+        tv.tv_sec = retry_interval; /* Wait up to five seconds. */
+        tv.tv_usec = 0;
+        retval = select(fd+1, &rfds, NULL, NULL, &tv);
+        zeitstempel();
+        if (retval == -1)
+          perror("select(fd)");
+        else if (retval)
+        {
+#ifdef DEBUG
+          fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+#endif
+          if (FD_ISSET(fd,&rfds))
+          {
+            ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+		     fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+            if (in_bytes == 1)
+            {
+              result=read(fd,empfbuf,1);
+              retry=4;
+            }
+          }
+        }
+      } while( retry < 3 && in_bytes != 0);
+    }
   }
+  
   if (ip_zugriff)
   {
     if (!ip_first)
@@ -2333,9 +2471,9 @@ int datenlesen_A8(int anz_datensaetze)
   switch (sendbuf[1])  // vorbelegen lowbyte bei Startadr. > 00 00 00
   {
     case 0x00: lowbyte = 0; break;
-        case 0x40: lowbyte = 1; break;
-        case 0x80: lowbyte = 2; break;
-        case 0xc0: lowbyte = 3; break;
+    case 0x40: lowbyte = 1; break;
+    case 0x80: lowbyte = 2; break;
+    case 0xc0: lowbyte = 3; break;
   }
 
  #if DEBUG
@@ -2347,10 +2485,53 @@ fprintf(stderr," Startadresse: %x %x %x\n",sendbuf[1],sendbuf[2],sendbuf[3]);
 
     if (usb_zugriff)
     {
-      write_erg=write(fd_serialport,sendbuf,6);
+      fd_set rfds;
+      struct timeval tv;
+      int retval=0;
+      int retry=0;
+      int retry_interval=2;
+      int durchlauf=0;
+      write_erg=write(fd,sendbuf,6);
       if (write_erg == 6)    /* Lesen der Antwort*/
-        result=read(fd_serialport, u_dsatz_uvr,Bytes_for_0xA8);
+      {
+        do
+        {
+          in_bytes=0;
+          FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
+          FD_SET(fd, &rfds);
+          tv.tv_sec = retry_interval; /* Wait up to five seconds. */
+          tv.tv_usec = 0;
+          retval = select(fd+1, &rfds, NULL, NULL, &tv);
+          zeitstempel();
+          if (retval == -1)
+            perror("select(fd)");
+          else if (retval)
+          {
+#ifdef DEBUG
+          fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+#endif
+            if (FD_ISSET(fd,&rfds))
+            {
+              ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+		     fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+              if (in_bytes == 65)
+              {
+                result=read(fd, u_dsatz_uvr,Bytes_for_0xA8);
+                retry=4;
+#ifdef DEBUG
+                fprintf(stderr,"%s - Daten beim %d. Zugriff gelesen.\n",sZeit,durchlauf);
+#endif
+              }
+              else
+                durchlauf++;
+            }
+          }
+        } while( retry < 3 && in_bytes != 0);
+      }
     }
+    
     if (ip_zugriff)
     {
       if (!ip_first)
@@ -2498,7 +2679,12 @@ fprintf(stderr," Startadresse: %x %x %x\n",sendbuf[1],sendbuf[2],sendbuf[3]);
       if (uvr_typ == UVR61_3)
         tmp_erg = fwrite(puffer_dswinsol_uvr61_3,59,1,fp_logfile);
 
-      if ( ((i%100) == 0) && (i > 0) )
+      if (usb_zugriff)
+      {
+        if ( ((i%20) == 0) && (i > 0) )
+          printf("%d Datensaetze geschrieben.\n",i);
+      }
+      else if ( ((i%100) == 0) && (i > 0) )
         printf("%d Datensaetze geschrieben.\n",i);
 
       if ( *end_adresse == sendbuf[1] && *(end_adresse+1) == sendbuf[2] && *(end_adresse+2) == sendbuf[3] )
@@ -2563,7 +2749,6 @@ fprintf(stderr," Startadresse: %x %x %x\n",sendbuf[1],sendbuf[2],sendbuf[3]);
       }
     }
   }
-
   return i + 1 - fehlerhafte_ds;
 }
 
@@ -2572,7 +2757,7 @@ int datenlesen_D1(int anz_datensaetze)
 {
   unsigned modTeiler;
   int i, merk_i, fehlerhafte_ds, result=0, lowbyte, middlebyte, merkmiddlebyte, tmp_erg = 0;
-  int Bytes_for_0xD1 = 127, monatswechsel = 0;
+  int Bytes_for_0xD1 = 127, monatswechsel = 0, in_bytes=0;
   u_modus_D1 u_dsatz_uvr[1];
 
   DS_Winsol dsatz_winsol[1];
@@ -2598,9 +2783,48 @@ int datenlesen_D1(int anz_datensaetze)
   sendbuf[0]=VERSIONSABFRAGE;   /* Senden der Versionsabfrage */
   if (usb_zugriff)
   {
-    write_erg=write(fd_serialport,sendbuf,1);
+    close_usb();
+    init_usb();
+    fd_set rfds;
+    struct timeval tv;
+    int retval=0;
+    int retry=0;
+    int retry_interval=2; 
+    
+    write_erg=write(fd,sendbuf,1);
     if (write_erg == 1)    /* Lesen der Antwort*/
-      result=read(fd_serialport,empfbuf,1);
+    {
+      do
+      {
+        in_bytes=0;
+        FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
+        FD_SET(fd, &rfds);
+        tv.tv_sec = retry_interval; /* Wait up to five seconds. */
+        tv.tv_usec = 0;
+        retval = select(fd+1, &rfds, NULL, NULL, &tv);
+        zeitstempel();
+        if (retval == -1)
+          perror("select(fd)");
+        else if (retval)
+        {
+#ifdef DEBUG
+          fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+#endif
+          if (FD_ISSET(fd,&rfds))
+          {
+            ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+		     fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+            if (in_bytes == 1)
+            {
+              result=read(fd,empfbuf,1);
+              retry=4;
+            }
+          }
+        }
+      } while( retry < 3 && in_bytes != 0);
+    }
   }
   if (ip_zugriff)
   {
@@ -2636,7 +2860,7 @@ int datenlesen_D1(int anz_datensaetze)
   switch (sendbuf[1])  // vorbelegen lowbyte bei Startadr. > 00 00 00
   {
     case 0x00: lowbyte = 0; break;
-        case 0x80: lowbyte = 1; break;
+    case 0x80: lowbyte = 1; break;
   }
 
   for(;i<anz_datensaetze;i++)
@@ -2645,10 +2869,45 @@ int datenlesen_D1(int anz_datensaetze)
 
     if (usb_zugriff)
     {
-      write_erg=write(fd_serialport,sendbuf,6);
+      fd_set rfds;
+      struct timeval tv;
+      int retval=0;
+      int retry=0;
+      int retry_interval=2; 
+      write_erg=write(fd,sendbuf,6);
       if (write_erg == 6)    /* Lesen der Antwort*/
-        // result=read(fd_serialport, dsatz_uvr1611,65);
-        result=read(fd_serialport, u_dsatz_uvr,Bytes_for_0xD1);
+      {
+         do
+        {
+          in_bytes=0;
+          FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
+          FD_SET(fd, &rfds);
+          tv.tv_sec = retry_interval; /* Wait up to five seconds. */
+          tv.tv_usec = 0;
+          retval = select(fd+1, &rfds, NULL, NULL, &tv);
+          zeitstempel();
+          if (retval == -1)
+            perror("select(fd)");
+          else if (retval)
+          {
+#ifdef DEBUG
+          fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+#endif
+            if (FD_ISSET(fd,&rfds))
+            {
+              ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+		     fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+              if (in_bytes == Bytes_for_0xD1) /* 127 */
+              {
+                result=read(fd, u_dsatz_uvr,Bytes_for_0xD1);
+                retry=4;
+              }
+            }
+          }
+        } while( retry < 3 && in_bytes != 0);
+      }
     }
     if (ip_zugriff)
     {
@@ -2897,7 +3156,7 @@ int datenlesen_DC(int anz_datensaetze)
 {
   unsigned modTeiler;
   int i=0, j=0, y=0, merk_i=0, fehlerhafte_ds=0, result, lowbyte, middlebyte, merkmiddlebyte, tmp_erg = 0;
-  int Bytes_for_0xDC = 524, monatswechsel = 0, anzahl_can_rahmen = 0, marker = 0;
+  int Bytes_for_0xDC = 524, monatswechsel = 0, anzahl_can_rahmen = 0, marker = 0, in_bytes=0;
   int pruefsum_check = 0;
   int Speicherueberlauf = 0; /* = 1 wenn Ringspeicher komplett voll und wird ueberschrieben */
   u_DS_CAN u_dsatz_can[1];
@@ -2951,13 +3210,52 @@ if ((fp_logfile_debug2=fopen(DebugFile2,"w")) == NULL) /* dann Neuerstellung der
   sendbuf[0]=VERSIONSABFRAGE;   /* Senden der Versionsabfrage */
   if (usb_zugriff)
   {
-    write_erg=write(fd_serialport,sendbuf,1);
+    close_usb();
+    init_usb();
+    fd_set rfds;
+    struct timeval tv;
+    int retval=0;
+    int retry=0;
+    int retry_interval=2; 
+    
+    write_erg=write(fd,sendbuf,1);
     if (write_erg == 1)    /* Lesen der Antwort*/
-      result=read(fd_serialport,empfbuf,1);
-        sendbuf[0]=KONFIGCAN;
-    write_erg=write(fd_serialport,sendbuf,1);
+      result=read(fd,empfbuf,1);
+    sendbuf[0]=KONFIGCAN;
+    write_erg=write(fd,sendbuf,1);
     if (write_erg == 1)    /* Lesen der Antwort*/
-      result=read(fd_serialport,empfbuf,18);   /* ?? */
+    {
+      do
+      {
+        in_bytes=0;
+        FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
+        FD_SET(fd, &rfds);
+        tv.tv_sec = retry_interval; /* Wait up to five seconds. */
+        tv.tv_usec = 0;
+        retval = select(fd+1, &rfds, NULL, NULL, &tv);
+        zeitstempel();
+        if (retval == -1)
+          perror("select(fd)");
+        else if (retval)
+        {
+#ifdef DEBUG
+          fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+#endif
+          if (FD_ISSET(fd,&rfds))
+          {
+            ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+		     fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+            if (in_bytes == 18)
+            {
+              result=read(fd,empfbuf,18);   /* ?? */
+              retry=4;
+            }
+          }
+        }
+      } while( retry < 3 && in_bytes != 0);
+    }
   }
   if (ip_zugriff)
   {
@@ -2981,7 +3279,7 @@ if ((fp_logfile_debug2=fopen(DebugFile2,"w")) == NULL) /* dann Neuerstellung der
     if (write_erg == 1)    /* Lesen der Antwort */
       result  = recv(sock,empfbuf,1,0);
 
-        sendbuf[0]=KONFIGCAN;
+    sendbuf[0]=KONFIGCAN;
     write_erg=send(sock,sendbuf,1,0);
     if (write_erg == 1)    /* Lesen der Antwort */
       result  = recv(sock,empfbuf,18,0);
@@ -3009,32 +3307,32 @@ if ((fp_logfile_debug2=fopen(DebugFile2,"w")) == NULL) /* dann Neuerstellung der
   switch (sendbuf[1])  // vorbelegen lowbyte bei Startadr. > 00 00 00
   {
     case 0x00: lowbyte = 0; break;
-        case 0x40: switch(anzahl_can_rahmen)
-                           {
-                            case 1: lowbyte = 1; break;
-                                case 3: lowbyte = 3; break;
-                            case 5: lowbyte = 1; break;
-                                case 7: lowbyte = 3; break;
-                           }
-                           break;
-        case 0x80: switch(anzahl_can_rahmen)
-                           {
-                            case 1: lowbyte = 2; break;
-                                case 2: lowbyte = 3; break;
-                                case 3: lowbyte = 2; break;
-                            case 5: lowbyte = 2; break;
-                                case 6: lowbyte = 3; break;
-                                case 7: lowbyte = 2; break;
-                           }
-                           break;
-        case 0xc0: switch(anzahl_can_rahmen)
-                           {
-                            case 1: lowbyte = 3; break;
-                                case 3: lowbyte = 1; break;
-                            case 5: lowbyte = 3; break;
-                                case 7: lowbyte = 1; break;
-                           }
-                           break;
+    case 0x40: switch(anzahl_can_rahmen)
+               {
+                  case 1: lowbyte = 1; break;
+                  case 3: lowbyte = 3; break;
+                  case 5: lowbyte = 1; break;
+                  case 7: lowbyte = 3; break;
+               }
+               break;
+    case 0x80: switch(anzahl_can_rahmen)
+               {
+                  case 1: lowbyte = 2; break;
+                  case 2: lowbyte = 3; break;
+                  case 3: lowbyte = 2; break;
+                  case 5: lowbyte = 2; break;
+                  case 6: lowbyte = 3; break;
+                  case 7: lowbyte = 2; break;
+               }
+               break;
+    case 0xc0: switch(anzahl_can_rahmen)
+               {
+                  case 1: lowbyte = 3; break;
+                  case 3: lowbyte = 1; break;
+                  case 5: lowbyte = 3; break;
+                  case 7: lowbyte = 1; break;
+               }
+               break;
   }
 
 #if DEBUG > 3
@@ -3056,9 +3354,45 @@ if ((fp_logfile_debug2=fopen(DebugFile2,"w")) == NULL) /* dann Neuerstellung der
 
     if (usb_zugriff)
     {
-      write_erg=write(fd_serialport,sendbuf,6);
+      fd_set rfds;
+      struct timeval tv;
+      int retval=0;
+      int retry=0;
+      int retry_interval=2; 
+      write_erg=write(fd,sendbuf,6);
       if (write_erg == 6)    /* Lesen der Antwort*/
-        result=read(fd_serialport, u_dsatz_can,Bytes_for_0xDC);
+      {
+         do
+        {
+          in_bytes=0;
+          FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
+          FD_SET(fd, &rfds);
+          tv.tv_sec = retry_interval; /* Wait up to five seconds. */
+          tv.tv_usec = 0;
+          retval = select(fd+1, &rfds, NULL, NULL, &tv);
+          zeitstempel();
+          if (retval == -1)
+            perror("select(fd)");
+          else if (retval)
+          {
+#ifdef DEBUG
+          fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+#endif
+            if (FD_ISSET(fd,&rfds))
+            {
+              ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+		     fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+              if (in_bytes == Bytes_for_0xDC) /* 524 */
+              {
+                result=read(fd, u_dsatz_can,Bytes_for_0xDC);
+                retry=4;
+              }
+            }
+          }
+        } while( retry < 3 && in_bytes != 0);
+      }
     }
     if (ip_zugriff)
     {
@@ -3079,24 +3413,22 @@ if ((fp_logfile_debug2=fopen(DebugFile2,"w")) == NULL) /* dann Neuerstellung der
         }
       }  /* if (!ip_first) */
 
-           result = 0;
-           marker = 0;
-       write_erg=send(sock,sendbuf,6,0);
-       if (write_erg == 6)    /* Lesen der Antwort */
-           {
-                        do
-                        {
-                                result = recv(sock, tmp_buf,Bytes_for_0xDC,0);
-                                if (result > 0)
-                                {
-                                        for (j=0;j<result;j++)
-                                        {
-                                            u_dsatz_can[0].all_bytes[marker+j] = tmp_buf[j];
-                                        }
-                                        marker = marker + result;
-                                }
-                        } while ( marker < ((anzahl_can_rahmen * 61) + 3) );
-                }
+      result = 0;
+      marker = 0;
+      write_erg=send(sock,sendbuf,6,0);
+      if (write_erg == 6)    /* Lesen der Antwort */
+      {
+         do
+         {
+            result = recv(sock, tmp_buf,Bytes_for_0xDC,0);
+            if (result > 0)
+            {
+              for (j=0;j<result;j++)
+                 u_dsatz_can[0].all_bytes[marker+j] = tmp_buf[j];
+              marker = marker + result;
+            }
+         } while ( marker < ((anzahl_can_rahmen * 61) + 3) );
+      }
     } /* if (ip_zugriff) */
 
     if (uvr_typ == UVR1611)
@@ -3104,7 +3436,6 @@ if ((fp_logfile_debug2=fopen(DebugFile2,"w")) == NULL) /* dann Neuerstellung der
 
   if (uvr_typ == UVR1611)
   {
-
     switch(anzahl_can_rahmen)
         {
           case 1: if (u_dsatz_can[0].DS_CAN_1.pruefsum == pruefsumme )
@@ -3551,7 +3882,6 @@ if ((fp_logfile_debug2=fopen(DebugFile2,"w")) == NULL) /* dann Neuerstellung der
 //  return anz_datensaetze - fehlerhafte_ds;
 }
 
-
 /* Berechnung der Pruefsumme des Kopfsatz Modus 0xD1 */
 int berechneKopfpruefziffer_D1(KopfsatzD1 derKopf[] )
 {
@@ -3942,34 +4272,98 @@ int anzahldatensaetze_A8(KopfsatzA8 kopf[])
 /* Datenpuffer im D-LOGG zuruecksetzen -USB */
 int reset_datenpuffer_usb(int do_reset )
 {
-  int result = 0;
+  int result = 0, in_bytes=0;;
   UCHAR sendbuf[1];       /*  sendebuffer fuer die Request-Commandos*/
   UCHAR empfbuf[256];
 
+  close_usb();
   sendbuf[0]=ENDELESEN;   /* Senden "Ende lesen" */
-   write_erg=write(fd_serialport,sendbuf,1);
-   if (write_erg == 1)    /* Lesen der Antwort*/
-     result=read(fd_serialport,empfbuf,1);
-   /* Hier fertig mit "Ende lesen" */
+  init_usb();
+  
+  fd_set rfds;
+  struct timeval tv;
+  int retval=0;
+  int retry=0;
+  int retry_interval=2; 
+
+  write_erg=write(fd,sendbuf,1);
+  if (write_erg == 1)    /* Lesen der Antwort*/
+  {
+    do
+    {
+	    in_bytes=0;
+      FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
+      FD_SET(fd, &rfds);
+      tv.tv_sec = retry_interval; /* Wait up to five seconds. */
+      tv.tv_usec = 0;
+      retval = select(fd+1, &rfds, NULL, NULL, &tv);
+      zeitstempel();
+      if (retval == -1)
+        perror("select(fd)");
+      else if (retval)
+      {
+#ifdef DEBUG
+          fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+#endif
+        if (FD_ISSET(fd,&rfds))
+        {
+          ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+		     fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+          if (in_bytes == 1)
+            result=read(fd,empfbuf,1);
+        }
+      }
+    } while( retry < 3 && in_bytes != 0);
+  }  /* Hier fertig mit "Ende lesen" */
 
   zeitstempel();
 
   if ( (empfbuf[0] == ENDELESEN) && (do_reset == 1) )
   {
     sendbuf[0]=RESETDATAFLASH;   /* Senden Buffer zuruecksetzen */
-    write_erg=write(fd_serialport,sendbuf,1);
+    write_erg=write(fd,sendbuf,1);
     if (write_erg == 1)    /* Lesen der Antwort*/
     {
-      result=read(fd_serialport,empfbuf,1);
-      /* printf("Vom DL erhaltene Reset-Bestaetigung: %x\n",empfbuf[0]); */
-      fprintf(fp_varlogfile,"%s - %s -- Vom DL erhaltene Reset-Bestaetigung: %x.\n",sDatum, sZeit,empfbuf[0]);
+      do
+      {
+        in_bytes=0;
+        FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
+        FD_SET(fd, &rfds);
+        tv.tv_sec = retry_interval; /* Wait up to five seconds. */
+        tv.tv_usec = 0;
+        retval = select(fd+1, &rfds, NULL, NULL, &tv);
+        zeitstempel();
+        if (retval == -1)
+          perror("select(fd)");
+        else if (retval)
+        {
+#ifdef DEBUG
+          fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
+#endif
+          if (FD_ISSET(fd,&rfds))
+          {
+            ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+		     fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+            if (in_bytes == 1)
+            {
+              result=read(fd,empfbuf,1);
+              /* printf("Vom DL erhaltene Reset-Bestaetigung: %x\n",empfbuf[0]); */
+              fprintf(fp_varlogfile,"%s - %s -- Vom DL erhaltene Reset-Bestaetigung: %x.\n",sDatum, sZeit,empfbuf[0]);
+            }
+          }
+        }
+      } while( retry < 3 && in_bytes != 0);
     }
     else
       printf("Reset konnte nicht gesendet werden. Ergebnis = %d\n",result);
   }
   else
   {
-     /* printf("Kein Data-Reset! \n"); */ /* reset-variable=%d \n",reset); */
+    /* printf("Kein Data-Reset! \n"); */ /* reset-variable=%d \n",reset); */
     fprintf(fp_varlogfile,"%s - %s -- Kein Data-Reset! \n",sDatum, sZeit);
   }
   return 1;

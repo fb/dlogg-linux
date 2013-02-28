@@ -44,11 +44,13 @@
  * Version 0        xx.xx.2010  CAN-Logging                                  *
  * Version 0.9.3    26.11.2012                                               *
  * Version 0.9.4    05.01.2013  Anpassung CAN-Logging                        *
-*                  $Id$. *
+ * Version 0.9.5    24.02.2013  Ueberarbeitung USB-Zugriff                   *
+* $Id$.     *
  *****************************************************************************/
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <termios.h>
 #include <stdio.h>
@@ -81,6 +83,7 @@
 extern char *optarg;
 extern int optind, opterr, optopt;
 
+void init_usb(void);
 int start_socket(void);
 int check_arg_getopt(int arg_c, char *arg_v[]);
 int check_pruefsumme(void);
@@ -154,12 +157,14 @@ int merk_monat;
 UCHAR uvr_modus, uvr_typ=0, uvr_typ2=0;  /* uvr_typ2 -> 2. Geraet bei 2DL */
 UCHAR datenrahmen;
 
+char Version[]="Version 0.9.5 vom 27.02.2013";
+
 int main(int argc, char *argv[])
 {
   fp_logfile=NULL; fp_varlogfile=NULL; fp_csvfile=NULL; fp_csvfile_2=NULL;
   csv_output=0;rrd_output=0;list_output=0;
-  struct termios newtio;  /* will be used for new port settings */
-
+  int in_bytes=0;
+	
   UCHAR uvr_modus_tmp, sendbuf[1], sendbuf_can[2];    /*  sendebuffer fuer die Request-Commandos*/
   unsigned char empfbuf[256];
   int send_bytes = 0, erg_check_arg ,result, ip_first;
@@ -210,46 +215,14 @@ int main(int argc, char *argv[])
   } /* Ende IP-Zugriff */
   else  if (usb_zugriff && !ip_zugriff)
   {
-    /************************************************************************/
-    /*  open the serial port for reading and writing */
-    fd = open(dlport, O_RDWR | O_NOCTTY );
-    if (fd < 0)
-    {
-      perror(dlport);
-      do_cleanup();
-      exit(-1);
-    }
-    /* save current port settings */
-    tcgetattr(fd,&oldtio);
-    /* initialize the port settings structure to all zeros */
-    //bzero(&newtio, sizeof(newtio));
-    memset( &newtio, 0, sizeof(newtio) );
-    /* then set the baud rate, handshaking and a few other settings */
-    newtio.c_cflag = BAUDRATE | CRTSCTS | CS8 | CLOCAL | CREAD;
-    newtio.c_iflag = IGNPAR;
-    newtio.c_oflag = 0;
-    /* set input mode (non-canonical, no echo,...) */
-    newtio.c_lflag = 0;
-    newtio.c_cc[VTIME]    = 0;   /* inter-character timer unused */
-    newtio.c_cc[VMIN]     = 1;   /* blocking read until first char received */
-    tcflush(fd, TCIFLUSH);
-    tcsetattr(fd,TCSANOW,&newtio);
-
-    sendbuf[0] = 0x81; /* Modusabfrage */
-    write_erg=write(fd,sendbuf,1);
-    if (write_erg == 1)    /* Lesen der Antwort*/
-    {
-      result=read(fd,empfbuf,1);
-      uvr_modus = empfbuf[0];
-    }
-
+	init_usb();
   }
   else
   {
     fprintf(stderr, " da lief was falsch ....\n %s \n", argv[0]);
     do_cleanup();
   }
-
+  
   uvr_modus = get_modulmodus(); /* Welcher Modus 
                                 0xA8 (1DL) / 0xD1 (2DL) / 0xDC (CAN) */
 fprintf(stderr, " CAN-Logging: uvr_modus -> %2X \n", uvr_modus);								
@@ -275,7 +248,7 @@ fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);
   {
     kennung_ok = 1;
     sendbuf_can[0]=AKTUELLEDATENLESEN;
-	sendbuf_can[1]=datenrahmen;      /* 1. Datenrahmen vorbelegt */
+    sendbuf_can[1]=datenrahmen;      /* 1. Datenrahmen vorbelegt */
     sendbuf[0]=AKTUELLEDATENLESEN;   /* Senden Request aktuelle Daten */
 //    bzero(akt_daten,58); /* auf 116 Byte fuer 2DL erweitert */
     //bzero(akt_daten,116);
@@ -287,15 +260,15 @@ fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);
     int retry=0;
     int init_retry=0;
     int send_retry=0;
-    int retry_interval=10; /* wie Winsol Display aktuelle Daten */
+    int retry_interval=5; /* wie Winsol Display aktuelle Daten */
 
     if (usb_zugriff)
     {
-		if ( uvr_modus == 0xDC )
-		{
-			fprintf(stderr,"USB-Abfrage bei CAN-Logging nicht implementiert!\n"); 
-			return(1);
-		}
+      if ( uvr_modus == 0xDC )
+      {
+        fprintf(stderr,"USB-Abfrage bei CAN-Logging nicht implementiert!\n"); 
+        return(1);
+      }
       retry_interval=5;
       write_erg=write(fd,sendbuf,1);
       if (write_erg == 1)    /* Lesen der Antwort*/
@@ -303,6 +276,7 @@ fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);
         retry=0;
         do
         {
+	      in_bytes=0;
           FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
           FD_SET(fd, &rfds);
           tv.tv_sec = retry_interval; /* Wait up to five seconds. */
@@ -321,8 +295,37 @@ fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);
 #endif
 
             //result=read(fd,akt_daten,57); /* Lesen von 115 Byte ohne Fehler??? fuer 2DL */
-            result=read(fd,akt_daten,115);
-
+            if (FD_ISSET(fd,&rfds))
+            {
+              ioctl(fd, FIONREAD, &in_bytes);
+#ifdef DEBUG
+		    fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+#endif
+              if (uvr_modus == 0xA8)
+              {
+                switch(in_bytes)
+                {
+                  case 28: result=read(fd,akt_daten,115);
+                           ioctl(fd, FIONREAD, &in_bytes); 
+                           break;
+                  case 57: result=read(fd,akt_daten,115);
+                           ioctl(fd, FIONREAD, &in_bytes);
+                           break;
+                }
+              }
+              if (uvr_modus == 0xD1)
+              {
+                switch(in_bytes)
+                {
+                  case 55: result=read(fd,akt_daten,115);
+                           ioctl(fd, FIONREAD, &in_bytes); 
+                           break;
+                  case 113: result=read(fd,akt_daten,115);
+                            ioctl(fd, FIONREAD, &in_bytes); 
+                            break;
+                }
+              }
+            }
 #ifdef DEBUG
         if (akt_daten[0] != 0xAB)
         {
@@ -332,7 +335,6 @@ fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);
           fprintf(stderr,"\n");
         }
 #endif
-
 #ifdef DEBUG
             fprintf(stderr,"r%d s%d received bytes=%d \n",retry,send_retry,result);
             if (result == 1)
@@ -343,23 +345,31 @@ fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);
           else
           {
 #ifdef DEBUG
-            fprintf(stderr,"%s - No data within %d seconds.r%d s%d\n",sZeit,retry_interval,
-            retry,send_retry);
+              fprintf(stderr,"%s - No data within %d seconds. r%d s%d\n",sZeit,retry_interval,
+              retry,send_retry);
 #endif
             sleep(retry_interval);
-          }
-          retry++;
+            retry++;
+          }  
         }
-        while( retry < 3 && result < 28);
+          while( retry < 3 && in_bytes != 0);
       }
 #ifdef DEBUG
       else
         fprintf(stderr," send_bytes=%d - not ok! \n",send_bytes);
 #endif
-
+#ifdef DEBUG      
+      fprintf(stderr,"Nach while... \n");
+#endif      
       /* if (result>0 && result <=57)  */
       if (result>27 && result <=115)
         akt_daten[result]='\0'; /* mit /000 abschliessen!! */
+      else if (retry == 3)
+      {
+        fprintf(stderr,"Keine Daten von %s erhalten. \n",dlport);
+        do_cleanup();
+          exit(-1);
+      }
     } /* Ende if (usb_zugriff) */
 
     if (ip_zugriff)
@@ -684,6 +694,47 @@ fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);
   return(0);
 } /* Ende main() */
 
+/* Init USB-Zugriff */
+void init_usb(void)
+{
+  struct termios newtio;  /* will be used for new port settings */
+
+    /************************************************************************/
+    /*  open the serial port for reading and writing */
+    fd = open(dlport, O_RDWR | O_NOCTTY); // | O_NDELAY);
+    if (fd < 0)
+    {
+      perror(dlport);
+      do_cleanup();
+      exit(-1);
+    }
+    /* save current port settings */
+    tcgetattr(fd,&oldtio);
+    /* initialize the port settings structure to all zeros */
+    //bzero(&newtio, sizeof(newtio));
+    memset( &newtio, 0, sizeof(newtio) );
+    /* then set the baud rate, handshaking and a few other settings */
+//    newtio.c_cflag = BAUDRATE | CRTSCTS | CS8 | CLOCAL | CREAD;
+    cfsetspeed(&newtio, BAUDRATE);
+//    newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
+//   newtio.c_iflag = IGNPAR;
+//    newtio.c_oflag = 0;
+    newtio.c_cflag &= ~PARENB;
+    newtio.c_cflag &= ~CSTOPB;
+    newtio.c_cflag &= ~CSIZE;
+    newtio.c_cflag |= CS8;
+    newtio.c_cflag |= (CLOCAL | CREAD);
+    newtio.c_cflag &= ~CRTSCTS;
+    /* set input mode (non-canonical, no echo,...) */
+    newtio.c_lflag = 0;
+    newtio.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+    newtio.c_oflag &= ~OPOST;          /* setze "raw" Input */
+    newtio.c_cc[VTIME]    = 0;   /* inter-character timer unused */
+    newtio.c_cc[VMIN]     = 1;   /* blocking read until first char received */
+    tcflush(fd, TCIFLUSH);
+    tcsetattr(fd,TCSANOW,&newtio);   
+}
+
 /* socket erzeugen und Verbindung aufbauen */
 int start_socket(void)
 {
@@ -741,7 +792,7 @@ int do_cleanup(void)
 static int print_usage()
 {
   fprintf(stderr,"\n    UVR1611 / UVR61-3 aktuelle Daten lesen vom D-LOGG USB oder BL-NET\n");
-  fprintf(stderr,"    Version 0.9.4 vom 05.01.2013 \n");
+  fprintf(stderr,"    %s \n",Version);
   fprintf(stderr,"\ndl-aktuelle-datenx (-p USB-Port | -i IP:Port) [-t sek] [-r DR] [-h] [-v] [--csv] [--rrd] [--list] \n");
   fprintf(stderr,"    -p USB-Port -> Angabe des USB-Portes,\n");
   fprintf(stderr,"                   an dem der D-LOGG angeschlossen ist.\n");
@@ -811,7 +862,7 @@ int check_arg_getopt(int arg_c, char *arg_v[])
       case 'v':
       {
         fprintf(stderr,"\n    UVR1611 / UVR61-3 aktuelle Daten lesen vom D-LOGG USB oder BL-NET\n");
-        fprintf(stderr,"    Version 0.9.4 vom 05.01.2013 \n");
+        fprintf(stderr,"    %s \n",Version);
 		printf("    $Id$ \n");
         printf("\n");
         return -1;
