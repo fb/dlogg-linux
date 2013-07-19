@@ -1,9 +1,10 @@
-/********************************************************/
+﻿/********************************************************/
 /* Konvertierung Winsol-LogDatei in CVS- oder SQL-Datei */
-/* (c) H. Roemer                                         */
+/* (c) H. Roemer                                        */
 /* Version 0.2  25.10.2006                              */
 /* Version 0.3  11.01.2007                              */
 /* Version 0.4  27.01.2008                              */
+/* Version 0.5  10.07.2013                              */
 /********************************************************/
 
 //#define WINDOWS  /* unter Windows Absturz */
@@ -122,15 +123,17 @@ struct csv_UVR61_3 {
 
 int main(int argc, char **argv)
 {
-  int i, c, x, y, erg, csv, sql, tmp_i, argv4_laenge=0;
+  int i, c, x, y, erg, csv, sql, wsol, tmp_i, argv4_laenge=0;
   unsigned char buffer[60], temp_byte;
   unsigned char uvr_typ;
   char tmp_kopf1[100], tmp_kopf2[100], tmp_kopf1_uvr61_3[100], tmp_kopf2_uvr61_3[100], sql_kopf[31];
   char *p_tmp_kopf1, *p_tmp_kopf2, *p_tmp_kopf1_uvr61_3, *p_tmp_kopf2_uvr61_3, *p_sql_kopf;
   char *tabelle;
+  int letzter_tag = 0;
 
   sql = FALSE;
   csv = FALSE;
+  wsol = FALSE;
 
   setlocale(LC_ALL, "");
 
@@ -165,6 +168,8 @@ int main(int argc, char **argv)
       {
         if ( strcmp(argv[3], "-csv") == 0 )
           csv = TRUE;
+        else if ( strcmp(argv[3], "-winsol") == 0 )
+          wsol = TRUE;
         else
         {
           printf("Fehler bei Format-Parameter %s\n", argv[3]);
@@ -197,6 +202,8 @@ int main(int argc, char **argv)
     printf("Fehler beim Lesen der Logdatei.\n");
     error_abbruch();
   }
+  if (wsol)
+        fwrite(buffer, 59, 1, fd_out);
   uvr_typ=0;
   if (buffer[7] == 0x07)
     uvr_typ = UVR1611;
@@ -243,6 +250,25 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
     struct_csv_UVR61_3.min = buffer[2];
     struct_winsol.sec = buffer[3];
     struct_csv_UVR61_3.sec = buffer[3];
+   
+   /* Pruefe Konsistenz des Datums */
+    if (struct_winsol.tag<0 || struct_winsol.tag> 31 ||struct_winsol.std >23 ||
+        struct_winsol.min> 59 || struct_winsol.sec> 59 ||
+        struct_winsol.tag < letzter_tag || struct_winsol.tag > letzter_tag +1){
+        int i;
+        for (i=0; i<59; i++)
+            printf("0x%02x ",buffer[i]);
+        printf("\n");
+        lseek(fd_in, -60, SEEK_CUR);
+        continue;
+    }
+    letzter_tag = struct_winsol.tag;
+	
+    if (wsol) 
+	{
+        fwrite(buffer, 59, 1, fd_out);
+        continue;
+    }
 
     /* Zust�nde der Ausgangsbyte's */
     ausgangsbyte1_belegen(buffer[4],uvr_typ);
@@ -424,9 +450,10 @@ Ausg1;Drehzst_A1;Ausg2;Ausg3;Analog;";
 
 void aufrufhinweis()
 {
-  printf("\nBenutzung: winsol2csv Logdatei Ausgabedatei -csv | -sql Tabelle \n");
+  printf("\nBenutzung: winsol2csv Logdatei Ausgabedatei -csv | -winsol | -sql Tabelle \n");
   printf("           Es dürfen keine Pfadangaben bei [Logdatei] angegeben werden!\n");
   printf("-csv          - speichern als CSV-Datei\n");
+  printf("-winsol       - speichern als Winsol Datei ggf. nach Resynchronisation\n");
   printf("-sql Tabelle  - speichern als SQL-Import-Datei\n");
   printf("     Tabelle  - Tabellenname der (My)SQL-Dattenbank\n");
   printf("Beispiel:  winsol2csv Y200511.log 200511.csv -csv\n");
@@ -537,17 +564,22 @@ void ausgangsbyte2_belegen(char aus_byte)
 void get_JahrMonat(char *logfilename)
 {
     int i;
-    char chjahr[5], chmon[3], *jahr, *mon;
+    char chjahr[5], chmon[3], *jahr, *mon, *fname;
 
     jahr = chjahr;
     mon = chmon;
 
-    chmon[0] = logfilename[5];
-    chmon[1] = logfilename[6];
+    fname = strrchr(logfilename, '/');
+    if (fname)
+        fname ++;
+    else
+        fname = logfilename;
+    chmon[0] = fname[5];
+    chmon[1] = fname[6];
 	chmon[2] = '\0'; /* terminate string */
 
     for(i=1;i<5;i++)
-        jahr[i-1] = logfilename[i];
+        jahr[i-1] = fname[i];
 	jahr[4]	 = '\0'; /* terminate string */
 
     struct_winsol.jahr = atoi(chjahr);
