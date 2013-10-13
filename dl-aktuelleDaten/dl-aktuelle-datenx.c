@@ -2485,7 +2485,8 @@ void write_CSVFile(int regler, FILE *fp, time_t datapoint_time)
   strftime(tag, 3, "%d", zeit);
   strftime(monat, 3, "%m", zeit);
   strftime(jahr, 3, "%y", zeit);
-  strftime(uhrzeit, 10, "%X", zeit);
+//  strftime(uhrzeit, 10, "%X", zeit); /* Problem bei Oracle-Linux 64 (Redhat 6.4) 64Bit */
+  strftime(uhrzeit, 10, "%T", zeit);
 
   /* WINSOL hat kein \n am Ende des ascii output */
   /* deshalb hier */
