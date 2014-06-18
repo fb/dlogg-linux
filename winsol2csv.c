@@ -16,7 +16,7 @@
 #include <ctype.h>
 #include <locale.h>
 #include <string.h>
-#include "../dl-lesen.h"
+#include "dl-lesen.h"
 
 #ifdef WINDOWS
   #include <io.h>

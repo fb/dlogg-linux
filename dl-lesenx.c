@@ -49,7 +49,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include "../dl-lesen.h"
+#include "dl-lesen.h"
 
 //#define DEBUG 4
 

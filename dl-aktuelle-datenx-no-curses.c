@@ -1,5 +1,4 @@
-/*****************************************************************************
- * Daten der UVR1611 lesen vom Datenlogger und im Winsol-Format speichern    *
+/***************************************************************************** * Daten der UVR1611 lesen vom Datenlogger und im Winsol-Format speichern    *
  * read data of UVR1611 from Datanlogger and save it in format of Winsol     *
  * (c) 2006 - 2009 H. Roemer / C. Dolainsky                                  *
  *                                                                           *
@@ -45,7 +44,7 @@
  * Version 0.9.3    26.11.2012                                               *
  * Version 0.9.4    05.01.2013  Anpassung CAN-Logging                        *
  * Version 0.9.5    24.02.2013  Ueberarbeitung USB-Zugriff                   *
-*  $Id$               *
+* $Id$.     *
  *****************************************************************************/
 
 #include <sys/types.h>
@@ -58,8 +57,8 @@
 #include <stdlib.h>
 #include <strings.h>
 #include <string.h>
-#include <curses.h>
-#include <panel.h>
+//#include <curses.h>
+//#include <panel.h>
 #include <time.h>
 #include <ctype.h>
 #include <locale.h>
@@ -69,8 +68,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <stdbool.h>
 
-#include "../dl-lesen.h"
+#include "dl-lesen.h"
 
 #define BAUDRATE B115200
 #define BUFFER_SIZE 1024
@@ -83,18 +83,17 @@ extern char *optarg;
 extern int optind, opterr, optopt;
 
 void init_usb(void);
-int start_socket(WINDOW *fenster1, WINDOW *fenster2);
+int start_socket(void);
 int check_arg_getopt(int arg_c, char *arg_v[]);
 int check_pruefsumme(void);
 void print_pruefsumme_not_ok(UCHAR pruefz_berech, UCHAR pruefz_read);
-void close_usb(void);
-int do_cleanup(WINDOW *fenster1, WINDOW *fenster2);
+int do_cleanup(void);
 int erzeugeLogfileName(int for_csv, char * pLogFileName, int anz_regler);
 int open_logfile(char LogFile[], FILE **fp);
 int close_logfile(FILE * fp);
 void check_kennung(int received_Bytes);
 int ip_handling(int sock);  /* IP-Zugriff - 05.02. neu */
-void func_csv_output(int anz_regler, time_t daten_zeitpunkt, WINDOW *fenster1, WINDOW *fenster2);
+void func_csv_output(int anz_regler, time_t daten_zeitpunkt);
 int write_header2CSV(int regler, FILE *fp);
 void write_CSVFile(int regler, FILE *fp, time_t datapoint_time);
 void write_CSVCONSOLE(int regler, time_t datapoint_time);
@@ -114,11 +113,6 @@ int clrbit( int word, int bit );
 int tstbit( int word, int bit );
 int xorbit( int word, int bit );
 int setbit( int word, int bit );
-void bildschirmausgabe(WINDOW *fenster);
-void reset_bildschirm(WINDOW *fenster);
-void keine_neuen_daten(WINDOW *fenster);
-void set_attribut(int zaehler, WINDOW *fenster);
-void test_farbe(void);
 int lies_conf(void);
 int get_modulmodus(void);
 
@@ -164,20 +158,17 @@ UCHAR datenrahmen;
 
 char Version[]="Version 0.9.5 vom 27.02.2013";
 
-WINDOW *fenster1=NULL, *fenster2=NULL;
-PANEL  *panel1=NULL, *panel2=NULL;
-
 int main(int argc, char *argv[])
 {
   fp_logfile=NULL; fp_varlogfile=NULL; fp_csvfile=NULL; fp_csvfile_2=NULL;
   csv_output=0;rrd_output=0;list_output=0;
   int in_bytes=0;
-
+	
   UCHAR uvr_modus_tmp, sendbuf[1], sendbuf_can[2];    /*  sendebuffer fuer die Request-Commandos*/
   unsigned char empfbuf[256];
   int send_bytes = 0, erg_check_arg ,result, ip_first;
   int pruefz_ok = 0, t_count, anzahl_can_rahmen = 0;
-  int i, j=2, sr=0;
+  int i, sr=0;
 
   time_t beginn, jetzt, diff_zeit;
 
@@ -200,39 +191,6 @@ int main(int argc, char *argv[])
     }
 
   /*************************************************************************/
-  /* aktiviert die locale Umgebung Komma oder Punkt als Dezimaltrenner :   */
-  if ( (!rrd_output) && (!list_output) )
-    setlocale(LC_ALL, "");
-
-  if ( (dauer != 0) && (!rrd_output) && (!list_output))
-  {
-    if ( lies_conf() == 1)
-      ext_bezeichnung = TRUE;
-    else
-    {
-      ext_bezeichnung=FALSE;
-      bool_farbe=FALSE;
-    }
-  }
-  else
-  {
-    ext_bezeichnung=FALSE;
-    bool_farbe=FALSE;
-  }
-
-  if ((!csv_output) && (dauer != 0) && (!rrd_output)  && (!list_output))
-  {
-    initscr();                                /* initialisieren von ncurses */
-    if (bool_farbe)
-      test_farbe();                        /* Koennen Farben aktiviert werden */
-    clear();
-    refresh();
-    fenster1= newwin(25,80,0,0);
-    fenster2= dupwin(fenster1);
-    panel1=new_panel(fenster1);
-    panel2=new_panel(fenster2);
-  }
-
   t_count=1;
   diff_zeit=-1;
   c=0;
@@ -248,7 +206,7 @@ int main(int argc, char *argv[])
   /* IP-Zugriff  - IP-Adresse und Port sind manuell gesetzt!!! */
   if (ip_zugriff && !usb_zugriff)
   {
-	sr = start_socket(fenster1, fenster2);
+	sr = start_socket();
 	if (sr > 1)
 	{
 		return sr;
@@ -256,17 +214,17 @@ int main(int argc, char *argv[])
   } /* Ende IP-Zugriff */
   else  if (usb_zugriff && !ip_zugriff)
   {
-	init_usb();	  
+	init_usb();
   }
   else
   {
     fprintf(stderr, " da lief was falsch ....\n %s \n", argv[0]);
-    do_cleanup(fenster1, fenster2);
+    do_cleanup();
   }
-
+  
   uvr_modus = get_modulmodus(); /* Welcher Modus 
                                 0xA8 (1DL) / 0xD1 (2DL) / 0xDC (CAN) */
-  fprintf(stderr, " CAN-Logging: uvr_modus -> %2X \n", uvr_modus);								
+fprintf(stderr, " CAN-Logging: uvr_modus -> %2X \n", uvr_modus);								
 
   if ( uvr_modus == 0xDC )
   {
@@ -276,9 +234,8 @@ int main(int argc, char *argv[])
       result  = recv(sock,empfbuf,18,0);
 
 	anzahl_can_rahmen = empfbuf[0];	
-    fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);	
+fprintf(stderr, " CAN-Logging: anzahl_can_rahmen -> %d \n", anzahl_can_rahmen);	
   }
-  close_usb();
   
   /********************************************************************/
   /* aktuelle Daten lesen                                             */
@@ -302,17 +259,15 @@ int main(int argc, char *argv[])
     int retry=0;
     int init_retry=0;
     int send_retry=0;
-    int retry_interval=10; /* wie Winsol Display aktuelle Daten */
+    int retry_interval=5; /* wie Winsol Display aktuelle Daten */
 
     if (usb_zugriff)
     {
-	  init_usb();
-	  uvr_modus = get_modulmodus();
-	  if ( uvr_modus == 0xDC )
-	  {
-		fprintf(stderr,"USB-Abfrage bei CAN-Logging nicht implementiert!\n"); 
-		return(1);
-	  }
+      if ( uvr_modus == 0xDC )
+      {
+        fprintf(stderr,"USB-Abfrage bei CAN-Logging nicht implementiert!\n"); 
+        return(1);
+      }
       retry_interval=5;
       write_erg=write(fd,sendbuf,1);
       if (write_erg == 1)    /* Lesen der Antwort*/
@@ -320,7 +275,7 @@ int main(int argc, char *argv[])
         retry=0;
         do
         {
-	      in_bytes=0;		
+	      in_bytes=0;
           FD_ZERO(&rfds);  /* muss jedes Mal gesetzt werden */
           FD_SET(fd, &rfds);
           tv.tv_sec = retry_interval; /* Wait up to five seconds. */
@@ -337,39 +292,39 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
             fprintf(stderr,"Data is available now. %d.%d\n",(int)tv.tv_sec,(int)tv.tv_usec);
 #endif
+
             //result=read(fd,akt_daten,57); /* Lesen von 115 Byte ohne Fehler??? fuer 2DL */
-	      if (FD_ISSET(fd,&rfds))
-           {
-		     ioctl(fd, FIONREAD, &in_bytes);
+            if (FD_ISSET(fd,&rfds))
+            {
+              ioctl(fd, FIONREAD, &in_bytes);
 #ifdef DEBUG
-		     fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
+		    fprintf(stderr,"Bytes im Puffer: %d\n",in_bytes);
 #endif
-		     if (uvr_modus == 0xA8)
-		     {
-			  switch(in_bytes)
-			  {
-				case 28: result=read(fd,akt_daten,115);
-						ioctl(fd, FIONREAD, &in_bytes); 
-			               break;
-				case 57: result=read(fd,akt_daten,115);
-		                                ioctl(fd, FIONREAD, &in_bytes);
-			               break;
-			  }
-		     }
-		     if (uvr_modus == 0xD1)
-		     {
-			   switch(in_bytes)
-			   {
-				case 55: result=read(fd,akt_daten,115);
-					        ioctl(fd, FIONREAD, &in_bytes); 
-			               break;
-				case 113: result=read(fd,akt_daten,115);
-		                                  ioctl(fd, FIONREAD, &in_bytes); 
-			               break;
-			   }
-		     }
-		     
-	       }
+              if (uvr_modus == 0xA8)
+              {
+                switch(in_bytes)
+                {
+                  case 28: result=read(fd,akt_daten,115);
+                           ioctl(fd, FIONREAD, &in_bytes); 
+                           break;
+                  case 57: result=read(fd,akt_daten,115);
+                           ioctl(fd, FIONREAD, &in_bytes);
+                           break;
+                }
+              }
+              if (uvr_modus == 0xD1)
+              {
+                switch(in_bytes)
+                {
+                  case 55: result=read(fd,akt_daten,115);
+                           ioctl(fd, FIONREAD, &in_bytes); 
+                           break;
+                  case 113: result=read(fd,akt_daten,115);
+                            ioctl(fd, FIONREAD, &in_bytes); 
+                            break;
+                }
+              }
+            }
 #ifdef DEBUG
         if (akt_daten[0] != 0xAB)
         {
@@ -389,15 +344,14 @@ int main(int argc, char *argv[])
           else
           {
 #ifdef DEBUG
-            fprintf(stderr,"%s - No data within %d seconds.r%d s%d\n",sZeit,retry_interval,
-            retry,send_retry);
+              fprintf(stderr,"%s - No data within %d seconds. r%d s%d\n",sZeit,retry_interval,
+              retry,send_retry);
 #endif
             sleep(retry_interval);
-	    retry++;
-          }
-          
+            retry++;
+          }  
         }
-        while( retry < 3 && in_bytes != 0);
+          while( retry < 3 && in_bytes != 0);
       }
 #ifdef DEBUG
       else
@@ -405,17 +359,16 @@ int main(int argc, char *argv[])
 #endif
 #ifdef DEBUG      
       fprintf(stderr,"Nach while... \n");
-#endif
+#endif      
       /* if (result>0 && result <=57)  */
       if (result>27 && result <=115)
         akt_daten[result]='\0'; /* mit /000 abschliessen!! */
       else if (retry == 3)
       {
-	    fprintf(stderr,"Keine Daten von %s erhalten. \n",dlport);
-	    do_cleanup(fenster1, fenster2);
-        exit(-1);
+        fprintf(stderr,"Keine Daten von %s erhalten. \n",dlport);
+        do_cleanup();
+          exit(-1);
       }
-	  close_usb();
     } /* Ende if (usb_zugriff) */
 
     if (ip_zugriff)
@@ -427,19 +380,19 @@ int main(int argc, char *argv[])
         if (sock == -1)
         {
           perror("socket failed()");
-          do_cleanup(fenster1, fenster2);
+          do_cleanup();
           return 2;
         }
         if (connect(sock, (const struct sockaddr *)&SERVER_sockaddr_in, sizeof(SERVER_sockaddr_in)) == -1)
         {
           perror("connect failed()");
-          do_cleanup(fenster1, fenster2);
+          do_cleanup();
           return 3;
         }
 		if (ip_handling(sock) == -1)
 		{
 			fprintf(stderr, "%s: Fehler im Initialisieren der IP-Kommunikation\n", argv[0]);
-			do_cleanup(fenster1, fenster2);
+			do_cleanup();
 			return 4;
 		}
       }
@@ -487,7 +440,7 @@ int main(int argc, char *argv[])
 								fprintf(stderr, "\n %s Fehler beim Schliessen der IP-Verbindung!\n", sZeit);
 							}
 							sleep(akt_daten[1]);
-							sr = start_socket(fenster1, fenster2);
+							sr = start_socket();
 							if (sr > 1)
 							{
 								return sr;
@@ -585,30 +538,11 @@ int main(int argc, char *argv[])
     /********************************************************************************************/
     if (akt_daten[0] == 0xAB)  // keine neuen Daten
     {
-      if((!csv_output) && (dauer != 0))
-        curs_set(0);
-
-        kennung_ok = 0;
-        if((!csv_output) && (dauer != 0))
-        {
-          if (bool_farbe)
-            attrset(A_BOLD | COLOR_PAIR(1));
-          else
-            attrset(A_BOLD);
-
-          mvprintw(23,1,"Es liegen keine aktuellen Daten vor.                         ");
-          attrset(A_NORMAL);
-        }
-        else
-          fprintf(stderr,"%s -  keine aktuellen Daten1 - %d  \n",sZeit,(int)beginn);
+      kennung_ok = 0;
+      fprintf(stderr,"%s -  keine aktuellen Daten1 - %d  \n",sZeit,(int)beginn);
 
       do
       {
-        if((!csv_output) && (dauer != 0))
-        {
-          halfdelay(10);
-          c=getch();
-        }
         if (dauer > 0)
         {
           jetzt=time(0);
@@ -616,17 +550,13 @@ int main(int argc, char *argv[])
 #ifdef DEBUG
           zeitstempel();
 #endif
-          if((!csv_output) && (dauer != 0))
-            mvprintw(23,79-(strlen(sZeit)),"%s",sZeit);
-          else
-          {
             diff_zeit+= retry_interval;
             sleep(retry_interval);
 #if DEBUG>2
             if( diff_zeit%10==0)
               fprintf(stderr," %s - keine aktuellen Daten, diffzeit: %d \n",sZeit,(int)diff_zeit);
 #endif
-          }
+/*           }  */
           /* schneller nochmal probieren */
           if (csv_output)
           {
@@ -654,12 +584,6 @@ int main(int argc, char *argv[])
       {
         beginn=time(0);
         merk_zeit = localtime(&beginn);
-        if ((!csv_output) && (dauer != 0))
-        {
-          move(23,1);
-          deleteln();
-        }
-
 #ifdef DEBUG
         if (akt_daten[0] == UVR61_3)
         {
@@ -705,46 +629,13 @@ int main(int argc, char *argv[])
         }
         if (csv_output)  /* in Datei schreiben */
         {
-          func_csv_output(1, daten_zeitpunkt, fenster1, fenster2);
+          func_csv_output(1, daten_zeitpunkt);
           if (uvr_modus == 0xD1)  /* zwei Regler vorhanden */
           {
             berechne_werte(2);
-            func_csv_output(2, daten_zeitpunkt, fenster1, fenster2);
+            func_csv_output(2, daten_zeitpunkt);
           }
         } /* Ende if (csv_output)  */
-        else if(dauer !=0)
-        {
-          bildschirmausgabe(fenster1);
-          zeitstempel();
-          mvwprintw(fenster1,23,79-(strlen(sZeit)),"%s",sZeit);
-          mvwprintw(fenster1,22,79-(23+(strlen(sZeit))),"letzte Aktualisierung: %s",sZeit);
-          if (uvr_modus == 0xD1)  /* zwei Regler vorhanden */
-            mvwprintw(fenster1,21,36,"Geraet 1");
-          mvwprintw(fenster1,21,76,"%i",t_count);
-          wattrset(fenster1,A_NORMAL);
-          clearok(fenster1, TRUE);
-          wrefresh(fenster1);
-          top_panel(panel1);
-          update_panels();
-          doupdate();
-          if (uvr_modus == 0xD1)  /* zwei Regler vorhanden */
-          {
-            berechne_werte(2);
-            bildschirmausgabe(fenster2);
-            zeitstempel();
-            mvwprintw(fenster2,23,79-(strlen(sZeit)),"%s",sZeit);
-            mvwprintw(fenster2,22,79-(23+(strlen(sZeit))),"letzte Aktualisierung: %s",sZeit);
-            mvwprintw(fenster2,21,36,"Geraet 2");
-            mvwprintw(fenster2,21,76,"%i",t_count);
-            wattrset(fenster2,A_NORMAL);
-            clearok(fenster2, TRUE);
-            wrefresh(fenster2);
-            top_panel(panel1);
-            update_panels();
-            doupdate();
-            j=2;
-          }
-        }
         t_count++;
       }
       for (i=0;i<115;i++) /* alles wieder auf 0 setzen */
@@ -758,11 +649,6 @@ int main(int argc, char *argv[])
     }
     do
     {
-      if ((!csv_output) && (dauer != 0))
-      {
-        halfdelay(10);
-        c=getch();
-      }
       if (dauer >= 0)
       {
         jetzt=time(0);
@@ -770,12 +656,8 @@ int main(int argc, char *argv[])
         if (dauer >= 0)
         {
           zeitstempel();
-          if ((!csv_output) && (dauer != 0))
-            mvprintw(23,79-(strlen(sZeit)),"%s",sZeit);
-          else
-          {
-            diff_zeit+=retry_interval;
-            sleep(retry_interval);
+          diff_zeit+=retry_interval;
+          sleep(retry_interval);
 #ifdef DEBUG
             if( diff_zeit % 10 == 0 )
             {
@@ -789,7 +671,6 @@ int main(int argc, char *argv[])
 #endif
             }
 #endif
-          }
         }
 
         if ( !pruefz_ok || !kennung_ok   )      // Pruefziffer stimmt nicht ueberein
@@ -798,55 +679,19 @@ int main(int argc, char *argv[])
           diff_zeit = (time_t)part_time;
         }
       }
-      if ( c == 'w')
-      {
-        if (j == 1) /* erstes Fenster (Geraet) */
-        {
-//          mvwprintw(fenster1,21,16,"Taste w: j=1");
-          clear();
-          hide_panel(panel2);
-          mvwprintw(fenster1,21,36,"Geraet 1");
-          wrefresh(fenster1);
-          show_panel(panel1);
-          top_panel(panel1);
-          update_panels();
-          doupdate();
-          j = 2;
-        }
-        else if (uvr_modus == 0xD1)
-        {
-//          mvwprintw(fenster2,21,16,"Taste w: j=2");
-          clear();
-          hide_panel(panel1);
-          mvwprintw(fenster2,21,36,"Geraet 2");
-          wrefresh(fenster2);
-          show_panel(panel2);
-          top_panel(panel2);
-          update_panels();
-          doupdate();
-          j = 1;
-        }
-      }
     }
     while( (c != 'q') && (diff_zeit < dauer ) );     /* ende Daten vorhanden */
   }       /* reader loop */
   while(c != 'q');
 
-  if((!csv_output) && (dauer != 0))
-  {
-    reset_bildschirm(fenster1);
-    reset_bildschirm(fenster2);
-  }
-
   /*************************************************************************/
   /* close all open files  */
   /* restore the old port settings before quitting */
-  if(!do_cleanup(fenster1, fenster2))
-    return (-1);
+  if(!do_cleanup())
+     return (-1);
 
   return(0);
 } /* Ende main() */
-
 
 /* Init USB-Zugriff */
 void init_usb(void)
@@ -859,7 +704,7 @@ void init_usb(void)
     if (fd < 0)
     {
       perror(dlport);
-      do_cleanup(fenster1, fenster2);
+      do_cleanup();
       exit(-1);
     }
     /* save current port settings */
@@ -868,7 +713,11 @@ void init_usb(void)
     //bzero(&newtio, sizeof(newtio));
     memset( &newtio, 0, sizeof(newtio) );
     /* then set the baud rate, handshaking and a few other settings */
+//    newtio.c_cflag = BAUDRATE | CRTSCTS | CS8 | CLOCAL | CREAD;
     cfsetspeed(&newtio, BAUDRATE);
+//    newtio.c_cflag = BAUDRATE | CS8 | CLOCAL | CREAD;
+//   newtio.c_iflag = IGNPAR;
+//    newtio.c_oflag = 0;
     newtio.c_cflag &= ~PARENB;
     newtio.c_cflag &= ~CSTOPB;
     newtio.c_cflag &= ~CSIZE;
@@ -882,50 +731,39 @@ void init_usb(void)
     newtio.c_cc[VTIME]    = 0;   /* inter-character timer unused */
     newtio.c_cc[VMIN]     = 1;   /* blocking read until first char received */
     tcflush(fd, TCIFLUSH);
-    tcsetattr(fd,TCSANOW,&newtio);
+    tcsetattr(fd,TCSANOW,&newtio);   
 }
 
 /* socket erzeugen und Verbindung aufbauen */
-int start_socket(WINDOW *fenster1, WINDOW *fenster2)
+int start_socket(void)
 {
     sock = socket(PF_INET, SOCK_STREAM, 0);
     if (sock == -1)
     {
       perror("socket failed()");
-      do_cleanup(fenster1, fenster2);
+      do_cleanup();
       return 2;
     }
 
     if (connect(sock, (const struct sockaddr *)&SERVER_sockaddr_in, sizeof(SERVER_sockaddr_in)) == -1)
     {
       perror("connect failed()");
-      do_cleanup(fenster1, fenster2);
+      do_cleanup();
       return 3;
     }
 
     if (ip_handling(sock) == -1)
     {
       fprintf(stderr, "Fehler im Initialisieren der IP-Kommunikation!\n");
-      do_cleanup(fenster1, fenster2);
+      do_cleanup();
       return 4;
     }
 	
 	return 1;
 }
 
-/* USB-Port schliessen */
-void close_usb(void)
-{
-  if ( fd > 0 )
-    {
-      // reset and close
-      tcflush(fd, TCIFLUSH);
-      tcsetattr(fd,TCSANOW,&oldtio);
-    }
-}
-
 /* Aufraeumen und alles Schliessen */
-int do_cleanup(WINDOW *fenster1, WINDOW *fenster2)
+int do_cleanup(void)
 {
   if (fp_csvfile != NULL)
     fclose(fp_csvfile);
@@ -936,14 +774,12 @@ int do_cleanup(WINDOW *fenster1, WINDOW *fenster2)
   if(fp_varlogfile!=NULL)
     fclose(fp_varlogfile);
 
-  close_usb();
-
-  if((!csv_output) && (dauer != 0))
-  {
-    reset_bildschirm(fenster1);
-    reset_bildschirm(fenster2);
-    endwin();
-  }
+  if ( fd > 0 )
+    {
+      // reset and close
+      tcflush(fd, TCIFLUSH);
+      tcsetattr(fd,TCSANOW,&oldtio);
+    }
 
   if (ip_zugriff)
     close(sock); /* IP-Socket schliessen */
@@ -994,6 +830,7 @@ int check_arg_getopt(int arg_c, char *arg_v[])
   int p_is_set=-1;
   int i_is_set=-1;
   char trennzeichen[] = ":";
+  list_output = 1;  /* Liste - default */
 
   /* arbeitet alle argumente ab  */
   while (1)
@@ -1101,11 +938,13 @@ int check_arg_getopt(int arg_c, char *arg_v[])
         if (  strncmp( long_options[option_index].name, "csv", 3) == 0 ) /* csv-Format ist gewuenscht */
         {
           csv_output = 1;
+          list_output = 0;  /* Liste aus*/
           fprintf(stderr," csv output aktiviert!\n");
         }
         if (  strncmp( long_options[option_index].name, "rrd", 3) == 0 )
         {
           rrd_output = 1;  /* RRD */
+          list_output = 0;  /* Liste aus*/
         }
         if (  strncmp( long_options[option_index].name, "list", 4) == 0 )
         {
@@ -1222,26 +1061,8 @@ int check_pruefsumme(void)
 /* Ausgabe des Fehlers "Pruefsumme falsch" */
 void print_pruefsumme_not_ok(UCHAR pruefz_berech, UCHAR pruefz_read)
 {
-  if ((!csv_output) && (dauer != 0))
-  {
-    curs_set(0);
-    mvprintw (22, 1, "Beenden -> Taste >q< druecken");
-    if (bool_farbe)
-      attrset(A_BOLD | COLOR_PAIR(1));
-    else
-      attrset(A_BOLD);
-    mvprintw(23,1,"Pruefziffern stimmen nicht ueberein! berechnet: %x gelesen: %x",pruefz_berech,pruefz_read);
-    attrset(A_NORMAL);
-  }
-  else
-    fprintf(stderr,"%s -  Pruefziffern stimmen nicht ueberein! berechnet: %x gelesen: %x\n",sZeit,pruefz_berech,pruefz_read);
+  fprintf(stderr,"%s -  Pruefziffern stimmen nicht ueberein! berechnet: %x gelesen: %x\n",sZeit,pruefz_berech,pruefz_read);
   zeitstempel();
-  if ((!csv_output) && (dauer != 0))
-  {
-    mvprintw(23,79-(strlen(sZeit)),"%s",sZeit);
-    halfdelay(30);
-    c=getch();
-  }
 }
 
 /* Der Name des Logfiles wird aus dem eigelesenen Wert fuer Jahr und Monat erzeugt */
@@ -1387,7 +1208,7 @@ int ip_handling(int sock)
 }
 
 /* Funktion zur Ausgabe der Daten in csv-Datei */
-void func_csv_output(int anz_regler, time_t daten_zeitpunkt, WINDOW *fenster1, WINDOW *fenster2)
+void func_csv_output(int anz_regler, time_t daten_zeitpunkt)
 {
   char csvFileName[256];
   time_t beginn;
@@ -1403,14 +1224,14 @@ void func_csv_output(int anz_regler, time_t daten_zeitpunkt, WINDOW *fenster1, W
       int ret_logfile=open_logfile(&csvFileName[0], &fp_csvfile );
       if ( ret_logfile < 0 )
       {
-        do_cleanup(fenster1, fenster2);
+        do_cleanup();
         exit(-1);
       }
       else if ( ret_logfile == 1 ) /* 1=new file 0=existing file */
       {
         if( write_header2CSV(anz_regler, fp_csvfile) < 0)
         {
-          do_cleanup(fenster1, fenster2);
+          do_cleanup();
           exit(-1);
         }
       }
@@ -1431,14 +1252,14 @@ void func_csv_output(int anz_regler, time_t daten_zeitpunkt, WINDOW *fenster1, W
         if ( ret_logfile < 0 )
         {
           printf("Fehler beim Monatswechsel: Das LogFile kann nicht geoeffnet werden!\n");
-          do_cleanup(fenster1, fenster2);
+          do_cleanup();
           exit(-1);
         }
         else if ( ret_logfile == 1 ) /* 1=new file 0=existing file */
         {
           if( write_header2CSV(anz_regler, fp_csvfile) < 0)
           {
-            do_cleanup(fenster1, fenster2);
+            do_cleanup();
             exit(-1);
           }
         }
@@ -1459,14 +1280,14 @@ void func_csv_output(int anz_regler, time_t daten_zeitpunkt, WINDOW *fenster1, W
       int ret_logfile=open_logfile(&csvFileName[0], &fp_csvfile_2 );
       if ( ret_logfile < 0 )
       {
-        do_cleanup(fenster1, fenster2);
+        do_cleanup();
         exit(-1);
       }
       else if ( ret_logfile == 1 ) /* 1=new file 0=existing file */
       {
         if( write_header2CSV(anz_regler, fp_csvfile_2) < 0)
         {
-          do_cleanup(fenster1, fenster2);
+          do_cleanup();
           exit(-1);
         }
       }
@@ -1487,14 +1308,14 @@ void func_csv_output(int anz_regler, time_t daten_zeitpunkt, WINDOW *fenster1, W
         if ( ret_logfile < 0 )
         {
           printf("Fehler beim Monatswechsel: Das LogFile kann nicht geoeffnet werden!\n");
-          do_cleanup(fenster1, fenster2);
+          do_cleanup();
           exit(-1);
         }
         else if ( ret_logfile == 1 ) /* 1=new file 0=existing file */
         {
           if( write_header2CSV(anz_regler, fp_csvfile_2) < 0)
           {
-            do_cleanup(fenster1, fenster2);
+            do_cleanup();
             exit(-1);
           }
         }
@@ -1951,387 +1772,6 @@ int xorbit( int word, int bit )
   return (word ^ (1 << bit));
 }
 
-/* Ausgabe der Werte auf den Bildschirm unter Nutzung von ncurses */
-void bildschirmausgabe(WINDOW *fenster)
-{
-  int i, j, c, unsichtbar;
-  UCHAR temp_byte = 0;
-
-  c=0;
-  j = 1;
-  i = 1;
-  unsichtbar = 1;
-  clear();
-  if (bool_farbe)
-    wattrset(fenster,A_NORMAL | COLOR_PAIR(11));
-  else
-    wattron(fenster,A_UNDERLINE);
-  mvwprintw(fenster,0,35," Sensoren ");
-  wattroff(fenster,A_UNDERLINE);
-  j = 1;
-  i = 1;
-  for(j=1;j<6;j++)          /* Temperaturen */
-  {
-    set_attribut(j,fenster);
-    if (ext_bezeichnung)
-    {
-      mvwprintw(fenster,j,1,"%s",pBez_S[i]);
-      if ( strcmp(pBez_S[i],"               " ) > 0 )
-        unsichtbar = 0;
-    }
-    else
-      mvwprintw(fenster,j,1,"S%d",i);
-    if ( !unsichtbar || !ext_bezeichnung )
-    {
-      switch(SENS_Art[i])
-      {
-        case 0: mvwprintw(fenster,j,17,": ---",SENS[i]); break;
-        case 1: mvwprintw(fenster,j,17,": AUS"); break;
-        case 2: mvwprintw(fenster,j,17,": %.1f C",SENS[i]); break;
-        case 3: mvwprintw(fenster,j,17,": %.0f l/h",SENS[i]); break;
-        case 6: mvwprintw(fenster,j,17,": %.0f W/m2 ",SENS[i]); break;
-        case 7: mvwprintw(fenster,j,17,": %.1f C",SENS[i]); break;
-        case 9: mvwprintw(fenster,j,17,": EIN"); break;
-        case 10: mvwprintw(fenster,j,17,": %.1f C",SENS[i]); break;
-        case 15: mvwprintw(fenster,j,17,": %.1f C",SENS[i]); break;
-      }
-    }
-    i++;
-    unsichtbar = 1;
-    if (ext_bezeichnung)
-    {
-      mvwprintw(fenster,j,28,"%s",pBez_S[i]);
-      if ( strcmp(pBez_S[i],"               " ) > 0 )
-        unsichtbar = 0;
-    }
-    else
-      mvwprintw(fenster,j,28,"S%d",i);
-    if ( !unsichtbar || !ext_bezeichnung )
-    {
-      switch(SENS_Art[i])
-      {
-        case 0: mvwprintw(fenster,j,44,": ---",SENS[i]); break;
-        case 1: mvwprintw(fenster,j,44,": AUS"); break;
-        case 2: mvwprintw(fenster,j,44,": %.1f C",SENS[i]); break;
-        case 3: mvwprintw(fenster,j,44,": %.0 fl/h",SENS[i]); break;
-        case 6: mvwprintw(fenster,j,44,": %.0f W/m2",SENS[i]); break;
-        case 7: mvwprintw(fenster,j,44,": %.1f C",SENS[i]); break;
-        case 9: mvwprintw(fenster,j,44,": EIN"); break;
-        case 10: mvwprintw(fenster,j,44,": %.1f C",SENS[i]); break;
-        case 15: mvwprintw(fenster,j,44,": %.1f C",SENS[i]); break;
-      }
-    }
-    i++;
-    unsichtbar = 1;
-    if (ext_bezeichnung)
-    {
-      mvwprintw(fenster,j,55,"%s",pBez_S[i]);
-      if ( strcmp(pBez_S[i],"               " ) > 0 )
-        unsichtbar = 0;
-    }
-    else
-      mvwprintw(fenster,j,55,"S%d",i);
-    if ( !unsichtbar || !ext_bezeichnung )
-    {
-      switch(SENS_Art[i])
-      {
-        case 0: mvwprintw(fenster,j,71,": ---",SENS[i]); break;
-        case 1: mvwprintw(fenster,j,71,": AUS"); break;
-        case 2: mvwprintw(fenster,j,71,": %.1f C",SENS[i]); break;
-        case 3: mvwprintw(fenster,j,71,": %.0f l/h",SENS[i]); break;
-        case 6: mvwprintw(fenster,j,71,": %fW/m ",SENS[i]); break;
-        case 7: mvwprintw(fenster,j,71,": %.1f C",SENS[i]); break;
-        case 9: mvwprintw(fenster,j,17,": EIN"); break;
-        case 10: mvwprintw(fenster,j,71,": %.1f C",SENS[i]); break;
-        case 15: mvwprintw(fenster,j,71,": %.1f C",SENS[i]); break;
-      }
-    }
-    i++;
-  unsichtbar = 1;
-  }
-  set_attribut(j,fenster);
-  unsichtbar = 1;
-  if (ext_bezeichnung)
-  {
-    mvwprintw(fenster,j,1,"%s",pBez_S[i]);
-    if ( strcmp(pBez_S[i],"               " ) > 0 )
-      unsichtbar = 0;
-  }
-  else
-    mvwprintw(fenster,j,1,"S%d",i); /*Sensor S16 - Impulssensor (muss aber nicht sein!) */
-//  if(AUSG[4] == 0)
-//    SENS[i]=0;
-  if ( !unsichtbar || !ext_bezeichnung )
-  {
-    switch(SENS_Art[i])
-    {
-      case 0: mvwprintw(fenster,j,17,": ----",SENS[i]); break;
-      case 1: mvwprintw(fenster,j,17,": AUS"); break;
-      case 2: mvwprintw(fenster,j,17,": %.1f C",SENS[i]); break;
-      case 3: mvwprintw(fenster,j,17,": %.0f l/h",SENS[i]); break;
-      case 6: mvwprintw(fenster,j,17,": %.0f W/m2 ",SENS[i]); break;
-      case 7: mvwprintw(fenster,j,17,": %.1f C",SENS[i]); break;
-      case 9: mvwprintw(fenster,j,17,": EIN"); break;
-      case 10: mvwprintw(fenster,j,17,": %.1f C",SENS[i]); break;
-      case 15: mvwprintw(fenster,j,17,": %.1f C",SENS[i]); break;
-    }
-  }
-  i=1;
-  j=j+2;
-  if (bool_farbe)
-    wattrset(fenster,A_NORMAL  | COLOR_PAIR(11));
-  else
-    wattron(fenster,A_UNDERLINE);
-  mvwprintw(fenster,j-1,35," Ausgaenge ");
-  wattroff(fenster,A_UNDERLINE);
-  for(j=8;j<12;j++)            /* Ausgaenge */
-  {
-    set_attribut(j,fenster);
-    unsichtbar = 1;
-    if (ext_bezeichnung)
-    {
-      mvwprintw(fenster,j,1,"%s",pBez_A[i]);
-      if ( strcmp(pBez_A[i],"               " ) > 0 )
-        unsichtbar = 0;
-    }
-    else
-      mvwprintw(fenster,j,1,"A%d",i);
-    if ( !unsichtbar || !ext_bezeichnung )
-    {
-      if(AUSG[i] == 1)
-        mvwprintw(fenster,j,17,": ein");
-      else
-        mvwprintw(fenster,j,17,": aus");
-    }
-    i++;
-    unsichtbar = 1;
-    if (ext_bezeichnung)
-    {
-      mvwprintw(fenster,j,28,"%s",pBez_A[i]);
-      if ( strcmp(pBez_A[i],"               " ) > 0 )
-        unsichtbar = 0;
-    }
-    else
-      mvwprintw(fenster,j,28,"A%d",i);
-    if ( !unsichtbar || !ext_bezeichnung )
-    {
-      if(AUSG[i] == 1)
-        mvwprintw(fenster,j,44,": ein");
-      else
-        mvwprintw(fenster,j,44,": aus");
-    }
-    i++;
-    unsichtbar = 1;
-    if (ext_bezeichnung)
-    {
-      mvwprintw(fenster,j,55,"%s",pBez_A[i]);
-      if ( strcmp(pBez_A[i],"               " ) > 0 )
-        unsichtbar = 0;
-    }
-    else
-      mvwprintw(fenster,j,55,"A%d",i);
-    if ( !unsichtbar || !ext_bezeichnung )
-    {
-      if(AUSG[i] == 1)
-        mvwprintw(fenster,j,71,": ein");
-      else
-        mvwprintw(fenster,j,71,": aus");
-    }
-    i++;
-  }
-  set_attribut(j,fenster);
-  unsichtbar = 1;
-  if (ext_bezeichnung)  /* A13 bzw. Analog bei UVR61-3 */
-  {
-    mvwprintw(fenster,j,1,"%s",pBez_A[i]);
-      if ( strcmp(pBez_A[i],"               " ) > 0 )
-        unsichtbar = 0;
-    }
-  else
-    mvwprintw(fenster,j,1,"A%d",i);
-  if (uvr_typ == UVR1611)
-  {
-    if ( !unsichtbar || !ext_bezeichnung )
-    {
-      if(AUSG[i] == 1)
-        mvwprintw(fenster,j,17,": ein");
-      else
-        mvwprintw(fenster,j,17,": aus");
-    }
-  }
-  if (uvr_typ == UVR61_3)
-  {
-    if ( !unsichtbar || !ext_bezeichnung )
-    {
-      if (tstbit(akt_daten[16],7) == 1) /* Analogausgang */
-      {
-        temp_byte = akt_daten[16] & ~(1 << 8); /* oberestes Bit auf 0 setzen */
-        mvwprintw(fenster,j,17,": %.1f;",(float)temp_byte / 10);
-      }
-      else
-        mvwprintw(fenster,j,17,": nicht aktiv");
-    }
-  }
-
-  j=j+2;
-  set_attribut(j,fenster);
-  unsichtbar = 1;
-  /*Drehzahlregler / -stufen */
-  if (ext_bezeichnung)
-  {
-    mvwprintw(fenster,j,1,"%s",pBez_DZR[1]);
-    if ( strcmp(pBez_DZR[1],"               " ) > 0 )
-      unsichtbar = 0;
-  }
-  else
-    mvwprintw(fenster,j,1,"Drehzahlregler 1");
-  if ( !unsichtbar || !ext_bezeichnung )
-  {
-    if(DZR[1] == 1)
-    {
-      mvwprintw(fenster,j,34,": ein");
-      if (ext_bezeichnung)
-        mvwprintw(fenster,j,42,"%s",pBez_DZS[1]);
-      else
-        mvwprintw(fenster,j,42,"Drehzahlstufe 1");
-      mvwprintw(fenster,j,73,": %i",DZStufe[1]);
-    }
-    else
-    {
-      mvwprintw(fenster,j,34,": aus");
-      if (ext_bezeichnung)
-        mvwprintw(fenster,j,42,"%s",pBez_DZS[1]);
-      else
-        mvwprintw(fenster,j,42,"Drehzahlstufe 1");
-      mvwprintw(fenster,j,73,": %i",DZStufe[1]);
-    }
-  }
-  j++;
-  set_attribut(j,fenster);
-  unsichtbar = 1;
-  if (ext_bezeichnung)
-  {
-    mvwprintw(fenster,j,1,"%s",pBez_DZR[2]);
-    if ( strcmp(pBez_DZR[2],"               " ) > 0 )
-      unsichtbar = 0;
-  }
-  else
-    mvwprintw(fenster,j,1,"Drehzahlregler 2");
-  if ( !unsichtbar || !ext_bezeichnung )
-  {
-    if(DZR[2] == 1)
-    {
-      mvwprintw(fenster,j,34,": ein");
-      if (ext_bezeichnung)
-        mvwprintw(fenster,j,42,"%s",pBez_DZS[2]);
-      else
-        mvwprintw(fenster,j,42,"Drehzahlstufe 2");
-      mvwprintw(fenster,j,73,": %i",DZStufe[2]);
-    }
-    else
-    {
-      mvwprintw(fenster,j,34,": aus");
-      if (ext_bezeichnung)
-        mvwprintw(fenster,j,42,"%s",pBez_DZS[2]);
-      else
-        mvwprintw(fenster,j,42,"Drehzahlstufe 2");
-      mvwprintw(fenster,j,73,": %i",DZStufe[2]);
-    }
-  }
-  j++;
-  set_attribut(j,fenster);
-  unsichtbar = 1;
-  if (ext_bezeichnung)
-  {
-    mvwprintw(fenster,j,1,"%s",pBez_DZR[6]);
-    if ( strcmp(pBez_DZR[6],"               " ) > 0 )
-      unsichtbar = 0;
-  }
-  else
-    mvwprintw(fenster,j,1,"Drehzahlregler 6");
-  if ( !unsichtbar || !ext_bezeichnung )
-  {
-    if(DZR[6] == 1)
-    {
-      mvwprintw(fenster,j,34,": ein");
-      if (ext_bezeichnung)
-        mvwprintw(fenster,j,42,"%s",pBez_DZS[6]);
-      else
-        mvwprintw(fenster,j,42,"Drehzahlstufe 6");
-      mvwprintw(fenster,j,73,": %i",DZStufe[6]);
-    }
-    else
-    {
-      mvwprintw(fenster,j,34,": aus");
-      if (ext_bezeichnung)
-        mvwprintw(fenster,j,42,"%s",pBez_DZS[6]);
-      else
-        mvwprintw(fenster,j,42,"Drehzahlstufe 6");
-      mvwprintw(fenster,j,73,": %i",DZStufe[6]);
-    }
-  }
-  j++;
-  set_attribut(j,fenster);
-  unsichtbar = 1;
-  if (ext_bezeichnung)
-  {
-    mvwprintw(fenster,j,1,"%s",pBez_DZR[7]);
-    if ( strcmp(pBez_DZR[7],"               " ) > 0 )
-      unsichtbar = 0;
-  }
-  else
-    mvwprintw(fenster,j,1,"Drehzahlregler 7");
-  if ( !unsichtbar || !ext_bezeichnung )
-  {
-    if(DZR[7] == 1)
-    {
-      mvwprintw(fenster,j,34,": ein");
-      if (ext_bezeichnung)
-        mvwprintw(fenster,j,42,"%s",pBez_DZS[7]);
-      else
-        mvwprintw(fenster,j,42,"Drehzahlstufe 7");
-      mvwprintw(fenster,j,73,": %i",DZStufe[7]);
-    }
-    else
-    {
-      mvwprintw(fenster,j,34,": aus");
-      if (ext_bezeichnung)
-        mvwprintw(fenster,j,42,"%s",pBez_DZS[7]);
-      else
-        mvwprintw(fenster,j,42,"Drehzahlstufe 7");
-      mvwprintw(fenster,j,73,": %i",DZStufe[7]);
-    }
-  }
-  j=j+2;
-  set_attribut(j,fenster);
-  /* Momentanleistung und Waermemengenzaehler */
-  mvwprintw(fenster,j,1,"Momentanleistung 1: %.1f kW",Mlstg[1]);
-  mvwprintw(fenster,j,35,"Waermemengenzaehler 1: %i MWh, %.1f kWh",(int)W_Mwh[1],W_kwh[1]);
-  j++;
-  set_attribut(j,fenster);
-  if (uvr_typ == UVR1611)
-  {
-    mvwprintw(fenster,j,1,"Momentanleistung 2: %.1f kW",Mlstg[2]);
-    mvwprintw(fenster,j,35,"Waermemengenzaehler 2: %i MWh, %.1f kWh",(int)W_Mwh[2],W_kwh[2]);
-  }
-
-  /* Auskommentiert, da nur zu Anzeigezwecken drin:
-     mvwprintw(fenster,18,1,"DRZ1 Solarpumpe: %x - DRZ2:  %x - DRZ3: %x - DRZ4 Heizkreis: %x ",akt_daten[35],akt_daten[36],akt_daten[37],akt_daten[38]);
-
-     mvwprintw(fenster,18,1,"T - E - S - T  ===>  Aussentemp. : 0x%x 0x%x %.1f C",akt_daten[23],akt_daten[24],S[12]);
-  */
-  noecho();
-  wattrset(fenster,A_NORMAL);
-  if (bool_farbe)
-    wattrset(fenster,A_NORMAL | COLOR_PAIR(4));
-  mvwprintw(fenster,22, 1, "Beenden -> Taste >q< druecken");
-  wattrset(fenster,A_NORMAL);
-
-  curs_set(0);
-  wrefresh(fenster);
-
-}
-
 /* Kopfsatz des CSV-Files schreiben */
 int  write_header2CSV(int regler, FILE *fp)
 {
@@ -2485,8 +1925,7 @@ void write_CSVFile(int regler, FILE *fp, time_t datapoint_time)
   strftime(tag, 3, "%d", zeit);
   strftime(monat, 3, "%m", zeit);
   strftime(jahr, 3, "%y", zeit);
-//  strftime(uhrzeit, 10, "%X", zeit); /* Problem bei Oracle-Linux 64 (Redhat 6.4) 64Bit */
-  strftime(uhrzeit, 10, "%T", zeit);
+  strftime(uhrzeit, 10, "%X", zeit);
 
   /* WINSOL hat kein \n am Ende des ascii output */
   /* deshalb hier */
@@ -2968,73 +2407,6 @@ void write_list(int regler)
   uvr_typ = temp_uvr_typ;
 }
 
-/* Bildschirm wieder zuruecksetzen */
-void reset_bildschirm(WINDOW *fenster)
-{
-  curs_set(1);
-  wclear(fenster);
-  wrefresh(fenster);
-}
-
-/* Ausgabe per ncurses "Keine neuen Daten" */
-void keine_neuen_daten(WINDOW *fenster)
-{
-  wclear(fenster);
-  mvwprintw(fenster,12,25,"Es liegen keine neuen Daten vor.");
-  wrefresh(fenster);
-}
-
-/* Setzen das Bildschirm-Attribut je nach Zeile */
-void set_attribut(int zaehler, WINDOW *fenster)
-{
-  if (bool_farbe)
-    {
-      if (zaehler%2 == 0)
-  wattrset(fenster,A_NORMAL | COLOR_PAIR(6));
-      else
-  wattrset(fenster,A_BOLD | COLOR_PAIR(2));
-    }
-  else
-    {
-      if (zaehler%2 == 0)
-  wattrset(fenster,A_NORMAL);
-      else
-  wattrset(fenster,A_BOLD);
-    }
-}
-
-/* Pruefen, ob Farben unterstuetzt werden. Wenn ja, dann aktivieren */
-/* Definition von Farbpaaren (Schriftfarbe, Hintergrundfarbe */
-void test_farbe(void)
-{
-  if(has_colors()==TRUE)
-    {
-      start_color();
-      bool_farbe = TRUE;
-      printf("Farben moeglich.\n");
-    }
-  else
-    {
-      bool_farbe = FALSE;
-      printf("Keine Farben da. :-(\n");
-    }
-
-  if (bool_farbe == TRUE)
-    {
-      init_pair(1,COLOR_RED,COLOR_BLACK);
-      init_pair(2,COLOR_GREEN,COLOR_BLACK);
-      init_pair(3,COLOR_BLUE,COLOR_BLACK);
-      init_pair(4,COLOR_YELLOW,COLOR_BLACK);
-      init_pair(5,COLOR_MAGENTA,COLOR_BLACK);
-      init_pair(6,COLOR_CYAN,COLOR_BLACK);
-      init_pair(7,COLOR_RED,COLOR_CYAN);
-      init_pair(8,COLOR_WHITE,COLOR_CYAN);
-      init_pair(10,COLOR_YELLOW,COLOR_CYAN);
-      init_pair(11,COLOR_BLACK,COLOR_CYAN);
-      init_pair(12,COLOR_BLACK,COLOR_BLACK);
-    }
-}
-
 /* Liest aus /etc/dl-aktuelle-datenx.conf die Beschriftung */
 int lies_conf(void)
 {
@@ -3042,7 +2414,7 @@ int lies_conf(void)
   fp_confFile=NULL;
 
   char confFile[] = "/etc/dl-aktuelle-datenx.conf";
-  char line[81], *p_line, *zielstring;
+  char line[81], *zielstring; // *p_line, 
   char *such_farbe = "COLOR", *such_farbe_on = "ON";
   char *such_DZR1 = "DZR1", *such_DZR2 = "DZR2", *such_DZR6 = "DZR6", *such_DZR7 = "DZR7";
   char *such_DZS1 = "DZS1", *such_DZS2 = "DZS2", *such_DZS6 = "DZS6", *such_DZS7 = "DZS7";
@@ -3053,7 +2425,7 @@ int lies_conf(void)
   int i, z, x;
 
   i=0;
-  p_line = line;
+//  p_line = line;
 
   if ((fp_confFile=fopen(confFile,"r")) == NULL)
     {
