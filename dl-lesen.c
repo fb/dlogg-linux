@@ -162,7 +162,7 @@ int main(int argc, char *argv[])
 
   /* LogFile zum Speichern von Ausgaben aus diesem Programm hier */
   pvarLogFile = &varLogFile[0];
-  sprintf(pvarLogFile,"./dl-lesenx.log");
+  sprintf(pvarLogFile,"./dl-lesen.log");
 
   if ((fp_varlogfile=fopen(varLogFile,"a")) == NULL)
     {
